@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useDashboardData, useBranches } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { SalesChart } from '@/components/dashboard/SalesChart';
 import {
@@ -12,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { format } from 'date-fns';
-import { getPeriodRange } from '@/lib/utils';
+import { getPeriodRange, formatCurrency } from '@/lib/utils';
 
 const periods = [
   { value: 'day', label: 'Today' },
@@ -24,13 +25,15 @@ const periods = [
 
 export function Dashboard() {
   const { user } = useAuthStore();
+  const { currentOrganization } = useOrganization();
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
-  const { data: branches = [] } = useBranches();
+  const { data: branches = [] } = useBranches(currentOrganization?.id);
   const { data: dashboardData, isLoading } = useDashboardData(
     selectedBranch === 'all' ? undefined : selectedBranch,
-    selectedPeriod
+    selectedPeriod,
+    currentOrganization?.id
   );
 
   const userBranches =
@@ -40,12 +43,7 @@ export function Dashboard() {
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'GHS',
-    }).format(value);
-  };
+
 
   const generateChartData = () => {
     if (!dashboardData) return [];
@@ -204,7 +202,7 @@ export function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Total Sales"
-          value={formatCurrency(dashboardData?.totalSales || 0)}
+          value={formatCurrency(dashboardData?.totalSales || 0, currentOrganization?.currency)}
           change=""
           changeType="positive"
           icon={<TrendingUp className="h-4 w-4" />}
@@ -212,7 +210,7 @@ export function Dashboard() {
         />
         <StatsCard
           title="Total Expenses"
-          value={formatCurrency(dashboardData?.totalExpenses || 0)}
+          value={formatCurrency(dashboardData?.totalExpenses || 0, currentOrganization?.currency)}
           change=""
           changeType="negative"
           icon={<TrendingDown className="h-4 w-4" />}
@@ -220,7 +218,7 @@ export function Dashboard() {
         />
         <StatsCard
           title="Net Profit"
-          value={formatCurrency(dashboardData?.netProfit || 0)}
+          value={formatCurrency(dashboardData?.netProfit || 0, currentOrganization?.currency)}
           change={
             dashboardData?.netProfit && dashboardData.netProfit > 0 ? '' : ''
           }

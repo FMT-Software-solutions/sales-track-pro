@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { useAuthStore } from '@/stores/auth';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { OrganizationProvider } from '@/contexts/OrganizationContext';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
 import { Branches } from '@/pages/Branches';
@@ -44,9 +45,11 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <Dashboard />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Dashboard />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />
@@ -54,9 +57,11 @@ function App() {
             path="/branches"
             element={
               <ProtectedRoute requiredRole="admin">
-                <AppLayout>
-                  <Branches />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Branches />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />
@@ -64,9 +69,11 @@ function App() {
             path="/sales"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <Sales />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Sales />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />
@@ -74,9 +81,11 @@ function App() {
             path="/expenses"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <Expenses />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Expenses />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />
@@ -84,9 +93,11 @@ function App() {
             path="/reports"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <Reports />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Reports />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />
@@ -94,9 +105,11 @@ function App() {
             path="/settings"
             element={
               <ProtectedRoute>
-                <AppLayout>
-                  <Settings />
-                </AppLayout>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Settings />
+                  </AppLayout>
+                </OrganizationProvider>
               </ProtectedRoute>
             }
           />

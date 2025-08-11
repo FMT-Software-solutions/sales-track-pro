@@ -52,3 +52,21 @@ export function getPeriodRange(
       };
   }
 }
+
+export function formatCurrency(value: number, currencySymbol: string = 'GH₵') {
+  // For custom currency symbols like GH₵, we'll format manually
+  if (currencySymbol === 'GH₵' || currencySymbol === 'GHS') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'GHS',
+    }).format(value);
+  }
+  
+  // For other currency symbols, format as number and prepend symbol
+  const formattedNumber = new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+  
+  return `${currencySymbol}${formattedNumber}`;
+}

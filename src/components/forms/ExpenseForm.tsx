@@ -16,35 +16,24 @@ import {
   useBranches,
   useCreateExpense,
   useUpdateExpense,
+  useExpenseCategories,
+  useCreateExpenseCategory,
   Expense,
 } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Calendar22 } from '@/components/ui/calendar22';
-import { parse } from 'date-fns';
 import React from 'react';
-
-const expenseCategories = [
-  'Food & Ingredients',
-  'Rent & Utilities',
-  'Staff Wages',
-  'Equipment',
-  'Marketing',
-  'Transportation',
-  'Supplies',
-  'Maintenance',
-  'Insurance',
-  'Taxes',
-  'Other',
-];
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 const expenseSchema = z.object({
-  branch_id: z.string().min(1, 'Please select a branch'),
-  amount: z.number().min(0.01, 'Amount must be greater than 0'),
-  category: z.string().min(1, 'Please select a category'),
-  description: z.string().optional(),
+  branch_id: z.string().min(1, 'Branch is required'),
   expense_date: z.string().min(1, 'Expense date is required'),
+  amount: z.number().min(0.01, 'Amount must be greater than 0'),
+  expense_category_id: z.string().min(1, 'Category is required'),
+  description: z.string().optional(),
+  include_time: z.boolean().optional(),
 });
 
 type ExpenseForm = z.infer<typeof expenseSchema>;
@@ -56,9 +45,18 @@ interface ExpenseFormProps {
 
 export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
   const { user } = useAuthStore();
-  const { data: branches = [] } = useBranches();
+  const { currentOrganization } = useOrganization();
+  const { data: branches = [] } = useBranches(currentOrganization?.id);
+  const { data: expenseCategories = [] } = useExpenseCategories(
+    currentOrganization?.id
+  );
   const createExpense = useCreateExpense();
   const updateExpense = useUpdateExpense();
+  const createExpenseCategory = useCreateExpenseCategory();
+
+  // State for quick add category
+  const [showNewCategoryForm, setShowNewCategoryForm] = React.useState(false);
+  const [newCategoryName, setNewCategoryName] = React.useState('');
 
   const userBranches =
     user?.profile?.role === 'admin'
@@ -80,13 +78,16 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
       ? {
           expense_date: expense.expense_date,
           branch_id: expense.branch_id,
-          category: expense.category,
+          expense_category_id: expense.expense_category_id || '',
           amount: expense.amount,
           description: expense.description || '',
         }
       : {
-          expense_date: format(new Date(), 'yyyy-MM-dd'),
+          expense_date: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
           branch_id: userBranches.length === 1 ? userBranches[0].id : '',
+          expense_category_id: '',
+          amount: 0,
+          description: '',
         },
   });
 
@@ -96,7 +97,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
       reset({
         expense_date: expense.expense_date,
         branch_id: expense.branch_id,
-        category: expense.category,
+        expense_category_id: expense.expense_category_id || '',
         amount: expense.amount,
         description: expense.description || '',
       });
@@ -104,36 +105,62 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
   }, [expense, reset]);
 
   const selectedBranchId = watch('branch_id');
-  const selectedCategory = watch('category');
   const expenseDateString = watch('expense_date');
-  const expenseDate = expenseDateString
-    ? parse(expenseDateString, 'yyyy-MM-dd', new Date())
-    : new Date();
+  const expenseDate = expenseDateString ? new Date(expenseDateString) : new Date();
+
+  const handleCreateNewCategory = async () => {
+    if (!newCategoryName.trim() || !user?.id || !currentOrganization?.id)
+      return;
+
+    try {
+      const newCategory = await createExpenseCategory.mutateAsync({
+        name: newCategoryName.trim(),
+        created_by: user.id,
+        organization_id: currentOrganization.id,
+      });
+
+      setValue('expense_category_id', newCategory.id);
+      setNewCategoryName('');
+      setShowNewCategoryForm(false);
+      toast.success('Expense category created and selected');
+    } catch (error) {
+      toast.error(
+        (error as Error).message || 'Failed to create expense category'
+      );
+    }
+  };
 
   const onSubmit = async (data: ExpenseForm) => {
-    if (!user?.id) return;
+    if (!user?.id || !currentOrganization?.id) return;
     try {
       if (expense) {
         await updateExpense.mutateAsync({ id: expense.id, ...data });
         toast.success('Expense updated successfully');
       } else {
+        // Find the selected category name for backward compatibility
+        const selectedCategory = expenseCategories.find(
+          (cat) => cat.id === data.expense_category_id
+        );
+
         await createExpense.mutateAsync({
           ...data,
           amount: Number(data.amount),
+          category: selectedCategory?.name || 'Other', // For backward compatibility
           created_by: user.id,
+          organization_id: currentOrganization.id,
         });
         toast.success('Expense recorded successfully');
       }
       // Preserve selected branch and category after reset
       reset({
-        expense_date: format(data.expense_date, 'yyyy-MM-dd'),
+        expense_date: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
         branch_id: data.branch_id,
-        category: data.category,
+        expense_category_id: data.expense_category_id,
         amount: 0,
         description: '',
       });
       onSuccess?.();
-    } catch (error: unknown) {
+    } catch (error) {
       toast.error((error as Error).message || 'Failed to save expense');
     }
   };
@@ -168,9 +195,10 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
             label="Expense Date"
             value={expenseDate}
             onChange={(date) =>
-              setValue('expense_date', date ? format(date, 'yyyy-MM-dd') : '')
+              setValue('expense_date', date ? format(date, 'yyyy-MM-dd HH:mm:ss') : '')
             }
             id="expense_date"
+            includeTime={true}
           />
           {errors.expense_date && (
             <p className="text-sm text-red-600">
@@ -182,7 +210,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="amount">Amount (GH₵)</Label>
+          <Label htmlFor="amount">Amount ({currentOrganization?.currency || 'GH₵'})</Label>
           <Input
             id="amount"
             type="number"
@@ -197,24 +225,75 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="category">Category</Label>
-          <Select
-            value={selectedCategory}
-            onValueChange={(value) => setValue('category', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a category" />
-            </SelectTrigger>
-            <SelectContent>
-              {expenseCategories.map((category) => (
-                <SelectItem key={category} value={category}>
-                  {category}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors.category && (
-            <p className="text-sm text-red-600">{errors.category.message}</p>
+          <Label htmlFor="expense_category_id">Category</Label>
+          <div className="space-y-2">
+            <Select
+              value={watch('expense_category_id')}
+              onValueChange={(value) => setValue('expense_category_id', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {expenseCategories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {!showNewCategoryForm ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNewCategoryForm(true)}
+                className="w-full"
+              >
+                + Add New Category
+              </Button>
+            ) : (
+              <div className="border rounded-lg p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">
+                    Quick Add Category
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowNewCategoryForm(false);
+                      setNewCategoryName('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <Input
+                  placeholder="Category name"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleCreateNewCategory}
+                  disabled={
+                    !newCategoryName.trim() || createExpenseCategory.isPending
+                  }
+                  className="w-full"
+                >
+                  {createExpenseCategory.isPending ? 'Creating...' : 'Create'}
+                </Button>
+              </div>
+            )}
+          </div>
+          {errors.expense_category_id && (
+            <p className="text-sm text-red-600">
+              {errors.expense_category_id.message}
+            </p>
           )}
         </div>
       </div>

@@ -1,22 +1,8 @@
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-} from 'recharts';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatCurrency } from '@/lib/utils';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface ChartData {
   name: string;
@@ -31,12 +17,7 @@ interface SalesChartProps {
 }
 
 export function SalesChart({ data, period }: SalesChartProps) {
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'GHS',
-    }).format(value);
-  };
+  const { currentOrganization } = useOrganization();
 
   return (
     <Card className="col-span-4">
@@ -69,10 +50,10 @@ export function SalesChart({ data, period }: SalesChartProps) {
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={formatCurrency}
+                  tickFormatter={(value) => formatCurrency(value, currentOrganization?.currency)}
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), '']}
+                  formatter={(value: number) => [formatCurrency(value, currentOrganization?.currency), '']}
                   labelStyle={{ color: '#000' }}
                 />
                 <Bar dataKey="sales" fill="#3b82f6" name="Sales" />
@@ -98,10 +79,10 @@ export function SalesChart({ data, period }: SalesChartProps) {
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={formatCurrency}
+                  tickFormatter={(value) => formatCurrency(value, currentOrganization?.currency)}
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), '']}
+                  formatter={(value: number) => [formatCurrency(value, currentOrganization?.currency), '']}
                   labelStyle={{ color: '#000' }}
                 />
                 <Line

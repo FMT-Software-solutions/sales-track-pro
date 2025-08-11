@@ -6,16 +6,26 @@ import { getPeriodRange } from '@/lib/utils';
 export type Branch = Database['public']['Tables']['branches']['Row'];
 export type Sale = Database['public']['Tables']['sales']['Row'];
 export type Expense = Database['public']['Tables']['expenses']['Row'];
+export type SalesItem = Database['public']['Tables']['sales_items']['Row'];
+export type ExpenseCategory = Database['public']['Tables']['expense_categories']['Row'];
+export type Organization = Database['public']['Tables']['organizations']['Row'];
+export type UserOrganization = Database['public']['Tables']['user_organizations']['Row'];
 
 // Branches
-export function useBranches() {
+export function useBranches(organizationId?: string) {
   return useQuery({
-    queryKey: ['branches'],
+    queryKey: ['branches', organizationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('branches')
         .select('*')
         .order('created_at', { ascending: false });
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return data as Branch[];
@@ -73,10 +83,11 @@ export function useUpdateBranch() {
 export function useSales(
   branchId?: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  organizationId?: string
 ) {
   return useQuery({
-    queryKey: ['sales', branchId, startDate, endDate],
+    queryKey: ['sales', branchId, startDate, endDate, organizationId],
     queryFn: async () => {
       let query = supabase
         .from('sales')
@@ -86,10 +97,17 @@ export function useSales(
           branches (
             name,
             location
+          ),
+          sales_items (
+            name
           )
         `
         )
         .order('sale_date', { ascending: false });
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
 
       if (branchId) {
         query = query.eq('branch_id', branchId);
@@ -134,6 +152,201 @@ export function useCreateSale() {
   });
 }
 
+export function useUpdateSaleReceiptGenerated() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (saleId: string) => {
+      const { data, error } = await supabase
+        .from('sales')
+        .update({ receipt_generated: true })
+        .eq('id', saleId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+    },
+  });
+}
+
+// Expense Categories
+export function useExpenseCategories(organizationId?: string) {
+  return useQuery({
+    queryKey: ['expense-categories', organizationId],
+    queryFn: async () => {
+      let query = supabase
+        .from('expense_categories')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      return data as ExpenseCategory[];
+    },
+  });
+}
+
+export function useCreateExpenseCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      category: Database['public']['Tables']['expense_categories']['Insert']
+    ) => {
+      const { data, error } = await supabase
+        .from('expense_categories')
+        .insert(category)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+  });
+}
+
+export function useUpdateExpenseCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: { id: string } & Database['public']['Tables']['expense_categories']['Update']) => {
+      const { data, error } = await supabase
+        .from('expense_categories')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+  });
+}
+
+export function useDeleteExpenseCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('expense_categories')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+  });
+}
+
+// Sales Items
+export function useSalesItems(organizationId?: string) {
+  return useQuery({
+    queryKey: ['sales-items', organizationId],
+    queryFn: async () => {
+      let query = supabase
+        .from('sales_items')
+        .select('*')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      return data as SalesItem[];
+    },
+  });
+}
+
+export function useCreateSalesItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      salesItem: Database['public']['Tables']['sales_items']['Insert']
+    ) => {
+      const { data, error } = await supabase
+        .from('sales_items')
+        .insert(salesItem)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+    },
+  });
+}
+
+export function useUpdateSalesItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: { id: string } & Database['public']['Tables']['sales_items']['Update']) => {
+      const { data, error } = await supabase
+        .from('sales_items')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+    },
+  });
+}
+
+export function useDeleteSalesItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('sales_items')
+        .update({ is_active: false })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+    },
+  });
+}
+
 export function useUpdateSale() {
   const queryClient = useQueryClient();
 
@@ -161,11 +374,13 @@ export function useUpdateSale() {
 // Expenses
 export function useExpenses(
   branchId?: string,
+  categoryId?: string,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  organizationId?: string
 ) {
   return useQuery({
-    queryKey: ['expenses', branchId, startDate, endDate],
+    queryKey: ['expenses', branchId, categoryId, startDate, endDate, organizationId],
     queryFn: async () => {
       let query = supabase
         .from('expenses')
@@ -180,8 +395,16 @@ export function useExpenses(
         )
         .order('expense_date', { ascending: false });
 
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId);
+      }
+
       if (branchId) {
         query = query.eq('branch_id', branchId);
+      }
+
+      if (categoryId) {
+        query = query.eq('category_id', categoryId);
       }
 
       if (startDate) {
@@ -248,9 +471,9 @@ export function useUpdateExpense() {
 }
 
 // Dashboard Analytics
-export function useDashboardData(branchId?: string, period: string = 'month') {
+export function useDashboardData(branchId?: string, period: string = 'month', organizationId?: string) {
   return useQuery({
-    queryKey: ['dashboard', branchId, period],
+    queryKey: ['dashboard', branchId, period, organizationId],
     queryFn: async () => {
       const now = new Date();
       const { startDate, endDate } = getPeriodRange(period, now);
@@ -263,6 +486,9 @@ export function useDashboardData(branchId?: string, period: string = 'month') {
 
       // Get sales
       let salesQuery = supabase.from('sales').select('*');
+      if (organizationId) {
+        salesQuery = salesQuery.eq('organization_id', organizationId);
+      }
       if (startDateStr) {
         salesQuery = salesQuery.gte('sale_date', startDateStr);
       }
@@ -275,6 +501,9 @@ export function useDashboardData(branchId?: string, period: string = 'month') {
 
       // Get expenses
       let expensesQuery = supabase.from('expenses').select('*');
+      if (organizationId) {
+        expensesQuery = expensesQuery.eq('organization_id', organizationId);
+      }
       if (startDateStr) {
         expensesQuery = expensesQuery.gte('expense_date', startDateStr);
       }
@@ -294,7 +523,7 @@ export function useDashboardData(branchId?: string, period: string = 'month') {
       if (expensesResult.error) throw expensesResult.error;
 
       const totalSales = salesResult.data.reduce(
-        (sum, sale) => sum + sale.amount,
+        (sum, sale) => sum + (sale.amount * (sale.quantity || 1)),
         0
       );
       const totalExpenses = expensesResult.data.reduce(
@@ -310,6 +539,110 @@ export function useDashboardData(branchId?: string, period: string = 'month') {
         salesData: salesResult.data,
         expensesData: expensesResult.data,
       };
+    },
+  });
+}
+
+// Organizations
+export function useUserOrganizations() {
+  return useQuery({
+    queryKey: ['user-organizations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('user_organizations')
+        .select(`
+          *,
+          organizations (
+            id,
+            name,
+            email,
+            phone,
+            currency,
+            address,
+            logo_url,
+            is_active,
+            created_at,
+            updated_at
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useCurrentOrganization() {
+  const { data: userOrganizations } = useUserOrganizations();
+  
+  return useQuery({
+    queryKey: ['current-organization'],
+    queryFn: async () => {
+      // For now, return the first organization the user belongs to
+      // In the future, this could be stored in user preferences
+      if (userOrganizations && userOrganizations.length > 0) {
+        return userOrganizations[0].organizations;
+      }
+      return null;
+    },
+    enabled: !!userOrganizations,
+  });
+}
+
+export function useCreateOrganization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (organization: Database['public']['Tables']['organizations']['Insert']) => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .insert(organization)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Add the current user as an admin of the new organization
+      const { error: memberError } = await supabase
+        .from('user_organizations')
+        .insert({
+          organization_id: data.id,
+          role: 'admin'
+        });
+
+      if (memberError) throw memberError;
+
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-organizations'] });
+      queryClient.invalidateQueries({ queryKey: ['current-organization'] });
+    },
+  });
+}
+
+export function useUpdateOrganization() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: { id: string } & Database['public']['Tables']['organizations']['Update']) => {
+      const { data, error } = await supabase
+        .from('organizations')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-organizations'] });
+      queryClient.invalidateQueries({ queryKey: ['current-organization'] });
     },
   });
 }

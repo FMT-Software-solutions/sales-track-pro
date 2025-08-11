@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
 import { signOut } from '@/lib/auth';
+import { OrganizationSelector } from '@/components/OrganizationSelector';
 import {
   LayoutDashboard,
   Building2,
@@ -118,6 +119,14 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main content */}
       <div className="pl-16 md:pl-64 transition-all duration-200">
+        {/* Top header with organization selector */}
+        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1" />
+            <OrganizationSelector />
+          </div>
+        </div>
+        
         <main className="py-8">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {children}

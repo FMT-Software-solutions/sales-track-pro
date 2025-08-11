@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { useCreateBranch, useUpdateBranch } from '@/hooks/queries';
 import { toast } from 'sonner';
 import type { Database } from '@/lib/supabase';
+import { useOrganization } from '@/contexts/OrganizationContext';
 
 const branchSchema = z.object({
   name: z.string().min(1, 'Branch name is required'),
@@ -26,6 +27,7 @@ interface BranchFormProps {
 }
 
 export function BranchForm({ branch, onSuccess }: BranchFormProps) {
+  const { currentOrganization } = useOrganization();
   const createBranch = useCreateBranch();
   const updateBranch = useUpdateBranch();
 
@@ -48,12 +50,13 @@ export function BranchForm({ branch, onSuccess }: BranchFormProps) {
   const isActive = watch('is_active');
 
   const onSubmit = async (data: BranchForm) => {
+    if (!currentOrganization?.id) return;
     try {
       if (branch) {
         await updateBranch.mutateAsync({ id: branch.id, ...data });
         toast.success('Branch updated successfully');
       } else {
-        await createBranch.mutateAsync(data);
+        await createBranch.mutateAsync({ ...data, organization_id: currentOrganization.id });
         toast.success('Branch created successfully');
       }
       onSuccess?.();

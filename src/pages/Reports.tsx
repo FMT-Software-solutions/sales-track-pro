@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useSales, useExpenses, useBranches } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import {
   Card,
   CardContent,
@@ -34,9 +35,11 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { formatCurrency } from '@/lib/utils';
 
 export function Reports() {
   const { user } = useAuthStore();
+  const { currentOrganization } = useOrganization();
   const [startDate, setStartDate] = useState(
     format(
       new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -46,16 +49,19 @@ export function Reports() {
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
-  const { data: branches = [] } = useBranches();
+  const { data: branches = [] } = useBranches(currentOrganization?.id);
   const { data: sales = [], isLoading: salesLoading } = useSales(
     selectedBranch === 'all' ? undefined : selectedBranch,
     startDate,
-    endDate
+    endDate,
+    currentOrganization?.id
   );
   const { data: expenses = [], isLoading: expensesLoading } = useExpenses(
     selectedBranch === 'all' ? undefined : selectedBranch,
+    undefined,
     startDate,
-    endDate
+    endDate,
+    currentOrganization?.id
   );
 
   const userBranches =
@@ -65,14 +71,9 @@ export function Reports() {
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'GHS',
-    }).format(value);
-  };
 
-  const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
+
+  const totalSales = sales.reduce((sum, sale) => sum + (sale.amount * (sale.quantity || 1)), 0);
   const totalExpenses = expenses.reduce(
     (sum, expense) => sum + expense.amount,
     0
@@ -107,21 +108,21 @@ export function Reports() {
 
     // Summary
     doc.text('Summary:', 20, 60);
-    doc.text(`Total Sales: ${formatCurrency(totalSales)}`, 20, 70);
-    doc.text(`Total Expenses: ${formatCurrency(totalExpenses)}`, 20, 80);
-    doc.text(`Net Profit: ${formatCurrency(netProfit)}`, 20, 90);
+    doc.text(`Total Sales: ${formatCurrency(totalSales, currentOrganization?.currency)}`, 20, 70);
+    doc.text(`Total Expenses: ${formatCurrency(totalExpenses, currentOrganization?.currency)}`, 20, 80);
+    doc.text(`Net Profit: ${formatCurrency(netProfit, currentOrganization?.currency)}`, 20, 90);
 
     // Sales Table
     if (sales.length > 0) {
       const salesData = sales.map((sale) => [
         format(new Date(sale.sale_date), 'MMM d, yyyy'),
         (sale as any).branches?.name || 'Unknown',
-        formatCurrency(sale.amount),
-        sale.description || '-',
+        formatCurrency(sale.amount * (sale.quantity || 1), currentOrganization?.currency),
+        sale.customer_name || '-',
       ]);
 
       autoTable(doc, {
-        head: [['Date', 'Branch', 'Amount', 'Description']],
+        head: [['Date', 'Branch', 'Amount', 'Customer']],
         body: salesData,
         startY: 105,
         headStyles: { fillColor: [59, 130, 246] },
@@ -134,9 +135,9 @@ export function Reports() {
       const expensesData = expenses.map((expense) => [
         format(new Date(expense.expense_date), 'MMM d, yyyy'),
         (expense as any).branches?.name || 'Unknown',
-        expense.category,
-        formatCurrency(expense.amount),
+        formatCurrency(expense.amount, currentOrganization?.currency),
         expense.description || '-',
+        expense.category || '-',
       ]);
 
       const finalY = (doc as any).lastAutoTable.finalY || 105;
@@ -157,7 +158,7 @@ export function Reports() {
     const data = type === 'sales' ? sales : expenses;
     const headers =
       type === 'sales'
-        ? ['Date', 'Branch', 'Amount', 'Description']
+        ? ['Date', 'Branch', 'Amount', 'Customer']
         : ['Date', 'Branch', 'Category', 'Amount', 'Description'];
 
     const csvContent = [
@@ -169,8 +170,8 @@ export function Reports() {
             : (item as any).expense_date,
           `"${(item as any).branches?.name || 'Unknown'}"`,
           type === 'expenses' ? `"${(item as any).category}"` : '',
-          item.amount,
-          `"${item.description || ''}"`,
+          type === 'sales' ? (item as any).amount * ((item as any).quantity || 1) : (item as any).amount,
+          `"${type === 'sales' ? (item as any).customer_name || '' : (item as any).description || ''}"`,
         ]
           .filter(Boolean)
           .join(',')
@@ -269,7 +270,7 @@ export function Reports() {
           </CardHeader>
           <CardContent>
             <div className="text-lg lg:text-2xl font-bold text-green-600">
-              {formatCurrency(totalSales)}
+              {formatCurrency(totalSales, currentOrganization?.currency)}
             </div>
             <p className="text-xs text-muted-foreground">
               {sales.length} transactions
@@ -286,7 +287,7 @@ export function Reports() {
           </CardHeader>
           <CardContent>
             <div className="text-lg lg:text-2xl font-bold text-red-600">
-              {formatCurrency(totalExpenses)}
+              {formatCurrency(totalExpenses, currentOrganization?.currency)}
             </div>
             <p className="text-xs text-muted-foreground">
               {expenses.length} transactions
@@ -305,10 +306,10 @@ export function Reports() {
                 netProfit >= 0 ? 'text-green-600' : 'text-red-600'
               }`}
             >
-              {formatCurrency(netProfit)}
+              {formatCurrency(netProfit, currentOrganization?.currency)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {((netProfit / totalSales) * 100).toFixed(1)}% profit margin
+              {totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0.0'}% profit margin
             </p>
           </CardContent>
         </Card>
@@ -348,7 +349,7 @@ export function Reports() {
                         <TableHead>Date</TableHead>
                         <TableHead>Branch</TableHead>
                         <TableHead>Amount</TableHead>
-                        <TableHead>Description</TableHead>
+                        <TableHead>Customer</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -363,9 +364,9 @@ export function Reports() {
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium text-green-600">
-                            {formatCurrency(sale.amount)}
+                            {formatCurrency(sale.amount * (sale.quantity || 1), currentOrganization?.currency)}
                           </TableCell>
-                          <TableCell>{sale.description || '-'}</TableCell>
+                          <TableCell>{sale.customer_name || '-'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -424,7 +425,7 @@ export function Reports() {
                           <Badge variant="secondary">{expense.category}</Badge>
                         </TableCell>
                         <TableCell className="font-medium text-red-600">
-                          {formatCurrency(expense.amount)}
+                          {formatCurrency(expense.amount, currentOrganization?.currency)}
                         </TableCell>
                         <TableCell>{expense.description || '-'}</TableCell>
                       </TableRow>

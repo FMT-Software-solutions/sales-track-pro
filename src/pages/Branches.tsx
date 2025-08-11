@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useBranches } from '@/hooks/queries';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -21,7 +22,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 type Branch = Database['public']['Tables']['branches']['Row'];
 
 export function Branches() {
-  const { data: branches = [], isLoading } = useBranches();
+  const { currentOrganization } = useOrganization();
+  const { data: branches = [], isLoading } = useBranches(currentOrganization?.id);
   const [selectedBranch, setSelectedBranch] = useState<Branch | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -169,7 +171,7 @@ export function Branches() {
               )}
               <div className="flex items-center text-xs text-muted-foreground">
                 <Calendar className="mr-1 h-3 w-3" />
-                Created {format(new Date(branch.created_at), 'MMM d, yyyy')}
+                Created {branch.created_at ? format(new Date(branch.created_at), 'MMM d, yyyy') : 'Unknown'}
               </div>
             </CardContent>
           </Card>
