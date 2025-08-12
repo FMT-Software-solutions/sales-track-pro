@@ -38,12 +38,10 @@ export function Dashboard() {
 
   const userBranches =
     user?.profile?.role === 'admin'
-      ? branches
+      ? branches.filter((branch) => branch.is_active)
       : branches.filter(
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
-
-
 
   const generateChartData = () => {
     if (!dashboardData) return [];
@@ -202,7 +200,10 @@ export function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           title="Total Sales"
-          value={formatCurrency(dashboardData?.totalSales || 0, currentOrganization?.currency)}
+          value={formatCurrency(
+            dashboardData?.totalSales || 0,
+            currentOrganization?.currency
+          )}
           change=""
           changeType="positive"
           icon={<TrendingUp className="h-4 w-4" />}
@@ -210,7 +211,10 @@ export function Dashboard() {
         />
         <StatsCard
           title="Total Expenses"
-          value={formatCurrency(dashboardData?.totalExpenses || 0, currentOrganization?.currency)}
+          value={formatCurrency(
+            dashboardData?.totalExpenses || 0,
+            currentOrganization?.currency
+          )}
           change=""
           changeType="negative"
           icon={<TrendingDown className="h-4 w-4" />}
@@ -218,7 +222,10 @@ export function Dashboard() {
         />
         <StatsCard
           title="Net Profit"
-          value={formatCurrency(dashboardData?.netProfit || 0, currentOrganization?.currency)}
+          value={formatCurrency(
+            dashboardData?.netProfit || 0,
+            currentOrganization?.currency
+          )}
           change={
             dashboardData?.netProfit && dashboardData.netProfit > 0 ? '' : ''
           }

@@ -36,6 +36,7 @@ import autoTable from 'jspdf-autotable';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatCurrency, formatCurrencyForPDF } from '@/lib/utils';
 import { DatePresets } from '@/components/ui/DatePresets';
+import { SalesItemsDisplay } from '@/components/ui/SalesItemsDisplay';
 
 export function Reports() {
   const { user } = useAuthStore();
@@ -63,7 +64,7 @@ export function Reports() {
 
   const userBranches =
     user?.profile?.role === 'admin'
-      ? branches
+      ? branches.filter((branch) => branch.is_active)
       : branches.filter(
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
@@ -80,7 +81,11 @@ export function Reports() {
 
     // Header
     doc.setFontSize(20);
-    doc.text('SalesTrack Pro - Financial Report', 20, 20);
+    doc.text(
+      `${currentOrganization?.name || 'SalesTrack Pro'} - Financial Report`,
+      20,
+      20
+    );
 
     doc.setFontSize(12);
     doc.text(
@@ -130,17 +135,35 @@ export function Reports() {
 
     // Sales Table
     if (sales.length > 0) {
-      const salesData = sales.map((sale) => [
-        format(new Date(sale.sale_date), 'MMM d, yyyy'),
-        (sale as any).branches?.name || 'Unknown',
-        (sale as any).products?.name || (sale as any).sales_items?.name || '-',
-        (sale as any).quantity || 1,
-        formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
-        formatCurrencyForPDF(
-          (sale.amount || 0) * ((sale as any).quantity || 1),
-          currentOrganization?.currency
-        ),
-      ]);
+      const salesData: any[] = [];
+      
+      sales.forEach((sale) => {
+        const saleLineItems = (sale as any).sale_line_items || [];
+        
+        if (saleLineItems.length === 0) {
+          // If no line items, create a single row with sale data
+          salesData.push([
+            format(new Date(sale.sale_date), 'MMM d, yyyy'),
+            (sale as any).branches?.name || 'Unknown',
+            '-',
+            '1',
+            formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
+            formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
+          ]);
+        } else {
+          // Create a row for each line item
+          saleLineItems.forEach((lineItem: any) => {
+            salesData.push([
+              format(new Date(sale.sale_date), 'MMM d, yyyy'),
+              (sale as any).branches?.name || 'Unknown',
+              lineItem.products?.name || '-',
+              lineItem.quantity || 1,
+              formatCurrencyForPDF(lineItem.unit_price || 0, currentOrganization?.currency),
+              formatCurrencyForPDF(lineItem.total_price || 0, currentOrganization?.currency),
+            ]);
+          });
+        }
+      });
 
       autoTable(doc, {
         head: [
@@ -180,43 +203,60 @@ export function Reports() {
   };
 
   const exportToCSV = (type: 'sales' | 'expenses') => {
-    const data = type === 'sales' ? sales : expenses;
     const headers =
       type === 'sales'
         ? ['Date', 'Branch', 'Item', 'Qty', 'Unit Amount', 'Total Amount']
         : ['Date', 'Branch', 'Category', 'Amount', 'Description'];
 
-    const csvContent = [
-      headers.join(','),
-      ...data.map((item) => {
-        if (type === 'sales') {
-          return [
-            (item as any).sale_date,
-            `"${(item as any).branches?.name || 'Unknown'}"`,
-            `"${
-              (item as any).products?.name ||
-              (item as any).sales_items?.name ||
-              '-'
-            }"`,
-            (item as any).quantity || 1,
-            (item as any).amount || 0,
-            ((item as any).amount || 0) * ((item as any).quantity || 1),
-          ].join(',');
+    let csvRows: string[] = [];
+
+    if (type === 'sales') {
+      // For sales, create a row for each sale line item
+      sales.forEach((sale) => {
+        const saleLineItems = (sale as any).sale_line_items || [];
+        
+        if (saleLineItems.length === 0) {
+          // If no line items, create a single row with sale data
+          csvRows.push([
+            (sale as any).sale_date,
+            `"${(sale as any).branches?.name || 'Unknown'}"`,
+            '"-"',
+            '1',
+            (sale as any).amount || 0,
+            (sale as any).amount || 0,
+          ].join(','));
         } else {
-          return [
-            (item as any).expense_date,
-            `"${(item as any).branches?.name || 'Unknown'}"`,
-            `"${
-              (item as any).expense_categories?.name ||
-              (item as any).category ||
-              'Unknown'
-            }"`,
-            (item as any).amount,
-            `"${(item as any).description || '-'}"`,
-          ].join(',');
+          // Create a row for each line item
+          saleLineItems.forEach((lineItem: any) => {
+            csvRows.push([
+              (sale as any).sale_date,
+              `"${(sale as any).branches?.name || 'Unknown'}"`,
+              `"${lineItem.products?.name || '-'}"`,
+              lineItem.quantity || 1,
+              lineItem.unit_price || 0,
+              lineItem.total_price || 0,
+            ].join(','));
+          });
         }
-      }),
-    ].join('\n');
+      });
+    } else {
+      // For expenses, keep the existing logic
+      csvRows = expenses.map((expense) => {
+        return [
+          (expense as any).expense_date,
+          `"${(expense as any).branches?.name || 'Unknown'}"`,
+          `"${
+            (expense as any).expense_categories?.name ||
+            (expense as any).category ||
+            'Unknown'
+          }"`,
+          (expense as any).amount,
+          `"${(expense as any).description || '-'}"`,
+        ].join(',');
+      });
+    }
+
+    const csvContent = [headers.join(','), ...csvRows].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
@@ -408,11 +448,16 @@ export function Reports() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {(sale as any).products?.name ||
-                              (sale as any).sales_items?.name ||
-                              '-'}
+                            <SalesItemsDisplay
+                              items={(sale as any).sale_line_items || []}
+                            />
                           </TableCell>
-                          <TableCell>-</TableCell>
+                          <TableCell>
+                            {(sale as any).sale_line_items?.reduce(
+                              (total: number, item: any) => total + (item.quantity || 0),
+                              0
+                            ) || '-'}
+                          </TableCell>
                           <TableCell className="font-medium text-green-600">
                             {formatCurrency(
                               sale.amount,

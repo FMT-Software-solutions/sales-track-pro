@@ -70,7 +70,7 @@ export default function Sales() {
 
   const userBranches =
     user?.profile?.role === 'admin'
-      ? branches
+      ? branches.filter((branch) => branch.is_active)
       : branches.filter(
           (branch) => branch.is_active && branch.id === user?.profile?.branch_id
         );
@@ -167,7 +167,7 @@ export default function Sales() {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Right side: Branch Selector */}
                 <div className="w-full lg:w-[200px]">
                   <Select

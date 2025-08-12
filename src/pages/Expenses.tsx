@@ -69,7 +69,7 @@ export default function Expenses() {
 
   const userBranches =
     user?.profile?.role === 'admin'
-      ? branches
+      ? branches.filter((branch) => branch.is_active)
       : branches.filter(
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
@@ -92,7 +92,7 @@ export default function Expenses() {
         ?.toLowerCase()
         .includes(debouncedSearchValue.toLowerCase()) ??
         false);
-    
+
     return matchesSearch;
   });
 
@@ -192,7 +192,7 @@ export default function Expenses() {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Right side: Branch Selector */}
                 <div className="w-full lg:w-[200px]">
                   <Select

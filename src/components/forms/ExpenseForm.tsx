@@ -60,7 +60,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
 
   const userBranches =
     user?.profile?.role === 'admin'
-      ? branches
+      ? branches.filter((branch) => branch.is_active)
       : branches.filter(
           (branch) => branch.is_active && branch.id === user?.profile?.branch_id
         );
@@ -106,7 +106,9 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
 
   const selectedBranchId = watch('branch_id');
   const expenseDateString = watch('expense_date');
-  const expenseDate = expenseDateString ? new Date(expenseDateString) : new Date();
+  const expenseDate = expenseDateString
+    ? new Date(expenseDateString)
+    : new Date();
 
   const handleCreateNewCategory = async () => {
     if (!newCategoryName.trim() || !user?.id || !currentOrganization?.id)
@@ -180,7 +182,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
             <SelectContent>
               {userBranches.map((branch) => (
                 <SelectItem key={branch.id} value={branch.id}>
-                  {branch.name} - {branch.location}
+                  {branch.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -195,7 +197,10 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
             label="Expense Date"
             value={expenseDate}
             onChange={(date) =>
-              setValue('expense_date', date ? format(date, 'yyyy-MM-dd HH:mm:ss') : '')
+              setValue(
+                'expense_date',
+                date ? format(date, 'yyyy-MM-dd HH:mm:ss') : ''
+              )
             }
             id="expense_date"
             includeTime={true}
@@ -210,7 +215,9 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="amount">Amount ({currentOrganization?.currency || 'GH₵'})</Label>
+          <Label htmlFor="amount">
+            Amount ({currentOrganization?.currency || 'GH₵'})
+          </Label>
           <Input
             id="amount"
             type="number"
