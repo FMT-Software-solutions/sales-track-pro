@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -35,32 +34,30 @@ import { format } from 'date-fns';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatCurrencyForPDF } from '@/lib/utils';
+import { DatePresets } from '@/components/ui/DatePresets';
 
 export function Reports() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const [startDate, setStartDate] = useState(
-    format(
-      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-      'yyyy-MM-dd'
-    )
+  const [startDate, setStartDate] = useState<Date>(
+    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
-  const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [endDate, setEndDate] = useState<Date>(new Date());
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id);
   const { data: sales = [], isLoading: salesLoading } = useSales(
     selectedBranch === 'all' ? undefined : selectedBranch,
-    startDate,
-    endDate,
+    startDate.toISOString(),
+    endDate.toISOString(),
     currentOrganization?.id
   );
   const { data: expenses = [], isLoading: expensesLoading } = useExpenses(
     selectedBranch === 'all' ? undefined : selectedBranch,
     undefined,
-    startDate,
-    endDate,
+    startDate.toISOString(),
+    endDate.toISOString(),
     currentOrganization?.id
   );
 
@@ -71,9 +68,7 @@ export function Reports() {
           (branch) => branch.id === user?.profile?.branch_id && branch.is_active
         );
 
-
-
-  const totalSales = sales.reduce((sum, sale) => sum + (sale.amount * (sale.quantity || 1)), 0);
+  const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
   const totalExpenses = expenses.reduce(
     (sum, expense) => sum + expense.amount,
     0
@@ -85,12 +80,12 @@ export function Reports() {
 
     // Header
     doc.setFontSize(20);
-    doc.text('FoodTrack Pro - Financial Report', 20, 20);
+    doc.text('SalesTrack Pro - Financial Report', 20, 20);
 
     doc.setFontSize(12);
     doc.text(
-      `Period: ${format(new Date(startDate), 'MMM d, yyyy')} - ${format(
-        new Date(endDate),
+      `Period: ${format(startDate, 'MMM d, yyyy')} - ${format(
+        endDate,
         'MMM d, yyyy'
       )}`,
       20,
@@ -108,21 +103,49 @@ export function Reports() {
 
     // Summary
     doc.text('Summary:', 20, 60);
-    doc.text(`Total Sales: ${formatCurrency(totalSales, currentOrganization?.currency)}`, 20, 70);
-    doc.text(`Total Expenses: ${formatCurrency(totalExpenses, currentOrganization?.currency)}`, 20, 80);
-    doc.text(`Net Profit: ${formatCurrency(netProfit, currentOrganization?.currency)}`, 20, 90);
+    doc.text(
+      `Total Sales: ${formatCurrencyForPDF(
+        totalSales,
+        currentOrganization?.currency
+      )}`,
+      20,
+      70
+    );
+    doc.text(
+      `Total Expenses: ${formatCurrencyForPDF(
+        totalExpenses,
+        currentOrganization?.currency
+      )}`,
+      20,
+      80
+    );
+    doc.text(
+      `Net Profit: ${formatCurrencyForPDF(
+        netProfit,
+        currentOrganization?.currency
+      )}`,
+      20,
+      90
+    );
 
     // Sales Table
     if (sales.length > 0) {
       const salesData = sales.map((sale) => [
         format(new Date(sale.sale_date), 'MMM d, yyyy'),
         (sale as any).branches?.name || 'Unknown',
-        formatCurrency(sale.amount * (sale.quantity || 1), currentOrganization?.currency),
-        sale.customer_name || '-',
+        (sale as any).products?.name || (sale as any).sales_items?.name || '-',
+        (sale as any).quantity || 1,
+        formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
+        formatCurrencyForPDF(
+          (sale.amount || 0) * ((sale as any).quantity || 1),
+          currentOrganization?.currency
+        ),
       ]);
 
       autoTable(doc, {
-        head: [['Date', 'Branch', 'Amount', 'Customer']],
+        head: [
+          ['Date', 'Branch', 'Item', 'Qty', 'Unit Amount', 'Total Amount'],
+        ],
         body: salesData,
         startY: 105,
         headStyles: { fillColor: [59, 130, 246] },
@@ -135,9 +158,11 @@ export function Reports() {
       const expensesData = expenses.map((expense) => [
         format(new Date(expense.expense_date), 'MMM d, yyyy'),
         (expense as any).branches?.name || 'Unknown',
-        formatCurrency(expense.amount, currentOrganization?.currency),
+        (expense as any).expense_categories?.name ||
+          expense.category ||
+          'Unknown',
+        formatCurrencyForPDF(expense.amount, currentOrganization?.currency),
         expense.description || '-',
-        expense.category || '-',
       ]);
 
       const finalY = (doc as any).lastAutoTable.finalY || 105;
@@ -158,31 +183,49 @@ export function Reports() {
     const data = type === 'sales' ? sales : expenses;
     const headers =
       type === 'sales'
-        ? ['Date', 'Branch', 'Amount', 'Customer']
+        ? ['Date', 'Branch', 'Item', 'Qty', 'Unit Amount', 'Total Amount']
         : ['Date', 'Branch', 'Category', 'Amount', 'Description'];
 
     const csvContent = [
       headers.join(','),
-      ...data.map((item) =>
-        [
-          type === 'sales'
-            ? (item as any).sale_date
-            : (item as any).expense_date,
-          `"${(item as any).branches?.name || 'Unknown'}"`,
-          type === 'expenses' ? `"${(item as any).category}"` : '',
-          type === 'sales' ? (item as any).amount * ((item as any).quantity || 1) : (item as any).amount,
-          `"${type === 'sales' ? (item as any).customer_name || '' : (item as any).description || ''}"`,
-        ]
-          .filter(Boolean)
-          .join(',')
-      ),
+      ...data.map((item) => {
+        if (type === 'sales') {
+          return [
+            (item as any).sale_date,
+            `"${(item as any).branches?.name || 'Unknown'}"`,
+            `"${
+              (item as any).products?.name ||
+              (item as any).sales_items?.name ||
+              '-'
+            }"`,
+            (item as any).quantity || 1,
+            (item as any).amount || 0,
+            ((item as any).amount || 0) * ((item as any).quantity || 1),
+          ].join(',');
+        } else {
+          return [
+            (item as any).expense_date,
+            `"${(item as any).branches?.name || 'Unknown'}"`,
+            `"${
+              (item as any).expense_categories?.name ||
+              (item as any).category ||
+              'Unknown'
+            }"`,
+            (item as any).amount,
+            `"${(item as any).description || '-'}"`,
+          ].join(',');
+        }
+      }),
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${type}-${startDate}-${endDate}.csv`;
+    a.download = `${type}-${format(startDate, 'yyyy-MM-dd')}-${format(
+      endDate,
+      'yyyy-MM-dd'
+    )}.csv`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -208,54 +251,50 @@ export function Reports() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
-            <div className="space-y-2">
-              <Label htmlFor="start-date">Start Date</Label>
-              <Input
-                id="start-date"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
+          <div className="flex flex-col md:flex-row gap-4 items-start md:items-end justify-between">
+            {/* Left side: Date Range Picker */}
+            <div className="flex-1 space-y-2">
+              <DatePresets
+                value={{ from: startDate, to: endDate }}
+                onChange={(range) => {
+                  if (range) {
+                    setStartDate(range.from);
+                    setEndDate(range.to);
+                  }
+                }}
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="end-date">End Date</Label>
-              <Input
-                id="end-date"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
+            {/* Right side: Branch Selector and Export Button */}
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+              {user?.profile?.role === 'admin' && (
+                <div className="space-y-2">
+                  <Label htmlFor="branch">Branch</Label>
+                  <Select
+                    value={selectedBranch}
+                    onValueChange={setSelectedBranch}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Branches</SelectItem>
+                      {userBranches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-            {user?.profile?.role === 'admin' && (
-              <div className="space-y-2">
-                <Label htmlFor="branch">Branch</Label>
-                <Select
-                  value={selectedBranch}
-                  onValueChange={setSelectedBranch}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Branches</SelectItem>
-                    {userBranches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-end space-x-2">
+                <Button onClick={exportToPDF}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export PDF
+                </Button>
               </div>
-            )}
-
-            <div className="flex items-end space-x-2">
-              <Button onClick={exportToPDF}>
-                <Download className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
             </div>
           </div>
         </CardContent>
@@ -309,7 +348,10 @@ export function Reports() {
               {formatCurrency(netProfit, currentOrganization?.currency)}
             </div>
             <p className="text-xs text-muted-foreground">
-              {totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : '0.0'}% profit margin
+              {totalSales > 0
+                ? ((netProfit / totalSales) * 100).toFixed(1)
+                : '0.0'}
+              % profit margin
             </p>
           </CardContent>
         </Card>
@@ -348,8 +390,10 @@ export function Reports() {
                       <TableRow>
                         <TableHead>Date</TableHead>
                         <TableHead>Branch</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Customer</TableHead>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>Unit Amount</TableHead>
+                        <TableHead>Total Amount</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -363,10 +407,24 @@ export function Reports() {
                               {(sale as any).branches?.name || 'Unknown'}
                             </Badge>
                           </TableCell>
-                          <TableCell className="font-medium text-green-600">
-                            {formatCurrency(sale.amount * (sale.quantity || 1), currentOrganization?.currency)}
+                          <TableCell>
+                            {(sale as any).products?.name ||
+                              (sale as any).sales_items?.name ||
+                              '-'}
                           </TableCell>
-                          <TableCell>{sale.customer_name || '-'}</TableCell>
+                          <TableCell>-</TableCell>
+                          <TableCell className="font-medium text-green-600">
+                            {formatCurrency(
+                              sale.amount,
+                              currentOrganization?.currency
+                            )}
+                          </TableCell>
+                          <TableCell className="font-medium text-green-600">
+                            {formatCurrency(
+                              sale.amount,
+                              currentOrganization?.currency
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -422,10 +480,17 @@ export function Reports() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary">{expense.category}</Badge>
+                          <Badge variant="secondary">
+                            {(expense as any).expense_categories?.name ||
+                              expense.category ||
+                              'Unknown'}
+                          </Badge>
                         </TableCell>
                         <TableCell className="font-medium text-red-600">
-                          {formatCurrency(expense.amount, currentOrganization?.currency)}
+                          {formatCurrency(
+                            expense.amount,
+                            currentOrganization?.currency
+                          )}
                         </TableCell>
                         <TableCell>{expense.description || '-'}</TableCell>
                       </TableRow>

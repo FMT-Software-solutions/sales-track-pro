@@ -50,7 +50,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       expense_categories: {
@@ -91,7 +91,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       expenses: {
@@ -163,6 +163,7 @@ export type Database = {
           address: string | null
           created_at: string | null
           currency: string
+          description: string | null
           email: string | null
           id: string
           is_active: boolean | null
@@ -175,6 +176,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           currency?: string
+          description?: string | null
           email?: string | null
           id?: string
           is_active?: boolean | null
@@ -187,6 +189,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           currency?: string
+          description?: string | null
           email?: string | null
           id?: string
           is_active?: boolean | null
@@ -196,6 +199,50 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      products: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          organization_id: string | null
+          price: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          organization_id?: string | null
+          price?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          organization_id?: string | null
+          price?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "products_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -235,46 +282,95 @@ export type Database = {
           },
         ]
       }
+      sale_line_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          product_id: string
+          quantity: number
+          sale_id: string
+          total_price: number | null
+          unit_price: number
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          product_id: string
+          quantity?: number
+          sale_id: string
+          total_price?: number | null
+          unit_price: number
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          product_id?: string
+          quantity?: number
+          sale_id?: string
+          total_price?: number | null
+          unit_price?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_line_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "sales"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_line_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sales: {
         Row: {
+          amount: number
           branch_id: string
           created_at: string | null
           created_by: string
           customer_name: string | null
+          description: string | null
           id: string
           organization_id: string | null
-          quantity: number
-          receipt_generated: boolean | null
+          receipt_generated_at: string | null
           sale_date: string
-          sales_item_id: string | null
-          amount: number
+          total_amount: number | null
           updated_at: string | null
         }
         Insert: {
+          amount: number
           branch_id: string
           created_at?: string | null
           created_by: string
           customer_name?: string | null
+          description?: string | null
           id?: string
           organization_id?: string | null
-          quantity: number
-          receipt_generated?: boolean | null
+          receipt_generated_at?: string | null
           sale_date: string
-          sales_item_id?: string | null
-          amount: number
+          total_amount?: number | null
           updated_at?: string | null
         }
         Update: {
+          amount?: number
           branch_id?: string
           created_at?: string | null
           created_by?: string
           customer_name?: string | null
+          description?: string | null
           id?: string
           organization_id?: string | null
-          receipt_generated?: boolean | null
+          receipt_generated_at?: string | null
           sale_date?: string
-          sales_item_id?: string | null
-          amount?: number
+          total_amount?: number | null
           updated_at?: string | null
         }
         Relationships: [
@@ -294,71 +390,33 @@ export type Database = {
           },
         ]
       }
-      sales_items: {
-        Row: {
-          created_at: string | null
-          created_by: string | null
-          description: string | null
-          id: string
-          is_active: boolean | null
-          name: string
-          organization_id: string | null
-          price: number | null
-          updated_at: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean | null
-          name: string
-          organization_id?: string | null
-          price?: number | null
-          updated_at?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean | null
-          name?: string
-          organization_id?: string | null
-          price?: number | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "sales_items_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
       user_organizations: {
         Row: {
           created_at: string | null
           id: string
-          organization_id: string
-          role: string | null
-          user_id: string
+          is_active: boolean | null
+          organization_id: string | null
+          role: string
+          updated_at: string | null
+          user_id: string | null
         }
         Insert: {
           created_at?: string | null
           id?: string
-          organization_id: string
-          role?: string | null
-          user_id: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          role?: string
+          updated_at?: string | null
+          user_id?: string | null
         }
         Update: {
           created_at?: string | null
           id?: string
-          organization_id?: string
-          role?: string | null
-          user_id?: string
+          is_active?: boolean | null
+          organization_id?: string | null
+          role?: string
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -368,13 +426,6 @@ export type Database = {
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "user_organizations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          }
         ]
       }
     }
@@ -390,9 +441,8 @@ export type Database = {
     CompositeTypes: {
       [_ in never]: never
     }
-  };
-};
-
+  }
+}
 
 type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
 

@@ -29,9 +29,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { SaleForm } from '@/components/forms/SaleForm';
+import { MultipleSaleForm } from '@/components/forms/MultipleSaleForm';
 import { SalesItemsManager } from '@/components/sales/SalesItemsManager';
 import { ReceiptGenerator } from '@/components/sales/ReceiptGenerator';
+import { SalesItemsDisplay } from '@/components/ui/SalesItemsDisplay';
+import { DatePresets, DateRange } from '@/components/ui/DatePresets';
 import {
   Dialog,
   DialogContent,
@@ -39,24 +41,30 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Edit } from 'lucide-react';
+import { Edit, Search } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function Sales() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
   const { data: branches = [] } = useBranches(currentOrganization?.id);
-  const [selectedBranch, setSelectedBranch] = useState('all');
-  const { searchValue, debouncedSearchValue, setSearchValue } = useDebouncedSearch('', 500);
-  const [editSale, setEditSale] = useState<Sale | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [searchValue, setSearchValue] = useState('');
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const limit = 10;
+
+  const { searchValue: debouncedSearchValue } = useDebouncedSearch(
+    searchValue,
+    500
+  );
 
   const { data: sales = [] } = useSales(
     selectedBranch === 'all' ? undefined : selectedBranch,
-    undefined,
-    undefined,
+    dateRange?.from ? dateRange.from.toISOString() : undefined,
+    dateRange?.to ? dateRange.to.toISOString() : undefined,
     currentOrganization?.id
   );
 
@@ -64,39 +72,34 @@ export default function Sales() {
     user?.profile?.role === 'admin'
       ? branches
       : branches.filter(
-          (branch) => branch.id === user?.profile?.branch_id && branch.is_active
+          (branch) => branch.is_active && branch.id === user?.profile?.branch_id
         );
 
-  // Filter sales by debounced search and branch
-  const filteredSales = sales.filter((sale: Sale) => {
-    const totalAmount = (sale.amount || 0) * ((sale as any).quantity || 1);
+  // Filter and paginate sales
+  const filteredSales = sales.filter((sale) => {
     const matchesSearch =
-      (sale as any).sales_items?.name?.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ||
-      (sale as any).branches?.name
+      !debouncedSearchValue ||
+      sale.customer_name
         ?.toLowerCase()
         .includes(debouncedSearchValue.toLowerCase()) ||
-      String(sale.amount).includes(debouncedSearchValue) ||
-      String(totalAmount.toFixed(2)).includes(debouncedSearchValue);
-    const matchesBranch =
-      selectedBranch === 'all' || sale.branch_id === selectedBranch;
-    return matchesSearch && matchesBranch;
+      sale.branches?.name
+        ?.toLowerCase()
+        .includes(debouncedSearchValue.toLowerCase());
+
+    return matchesSearch;
   });
 
-  // Pagination
-  const totalPages = Math.ceil(filteredSales.length / pageSize);
-  const paginatedSales = filteredSales.slice(
-    (page - 1) * pageSize,
-    page * pageSize
-  );
+  const totalPages = Math.ceil(filteredSales.length / limit);
+  const paginatedSales = filteredSales.slice((page - 1) * limit, page * limit);
 
   const handleEdit = (sale: Sale) => {
-    setEditSale(sale);
-    setIsDialogOpen(true);
+    setEditingSale(sale);
+    setIsEditDialogOpen(true);
   };
 
   const handleDialogClose = () => {
-    setEditSale(null);
-    setIsDialogOpen(false);
+    setEditingSale(null);
+    setIsEditDialogOpen(false);
   };
 
   return (
@@ -124,50 +127,66 @@ export default function Sales() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <SaleForm onSuccess={() => setPage(1)} />
+              <MultipleSaleForm onSuccess={() => setPage(1)} />
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="entries">
+        <TabsContent value="entries" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>Sales Entries</CardTitle>
-              <CardDescription>
-                View, search, filter, and edit sales records.
-              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex flex-col md:flex-row md:items-center gap-2 mb-4">
-                <Input
-                  type="text"
-                  placeholder="Search by item name, branch, unit amount, or total..."
-                  value={searchValue}
-                  onChange={(e) => {
-                    setSearchValue(e.target.value);
-                    setPage(1);
-                  }}
-                  className="w-full md:w-64"
-                />
-                <Select
-                  value={selectedBranch}
-                  onValueChange={(v) => {
-                    setSelectedBranch(v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full md:w-48">
-                    <SelectValue placeholder="All Branches" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Branches</SelectItem>
-                    {userBranches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col lg:flex-row gap-4">
+                {/* Left side: Search and Date Range */}
+                <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search sales..."
+                      value={searchValue}
+                      onChange={(e) => setSearchValue(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <DatePresets
+                      value={dateRange}
+                      onChange={setDateRange}
+                      placeholder="Filter by date range"
+                    />
+                    {dateRange && (
+                      <Button
+                        variant="outline"
+                        onClick={() => setDateRange(undefined)}
+                        size="sm"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Right side: Branch Selector */}
+                <div className="w-full lg:w-[200px]">
+                  <Select
+                    value={selectedBranch}
+                    onValueChange={setSelectedBranch}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select branch" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Branches</SelectItem>
+                      {userBranches.map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <Table className="min-w-[600px]">
@@ -175,39 +194,46 @@ export default function Sales() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Branch</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Unit Amount</TableHead>
+                      <TableHead>Items</TableHead>
+                      <TableHead>Customer</TableHead>
                       <TableHead>Total Amount</TableHead>
                       <TableHead className="w-[5%]">Receipt</TableHead>
-                      <TableHead className="w-[5%]">Edit</TableHead>
+                      <TableHead className="w-[5%]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedSales.map((sale: Sale) => (
                       <TableRow key={sale.id}>
                         <TableCell>
-                          {format(new Date(sale.sale_date), 'MMM d, yyyy')}
+                          {format(
+                            new Date(sale.sale_date),
+                            'MMM dd, yyyy HH:mm'
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
-                            {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                            {(sale as any).branches?.name || 'Unknown'}
+                            {sale.branches?.name || 'Unknown'}
                           </Badge>
                         </TableCell>
-                        <TableCell>{(sale as any).sales_items?.name || '-'}</TableCell>
-                        <TableCell>{(sale as any).quantity || 1}</TableCell>
-                        <TableCell>{currentOrganization?.currency || 'GH₵'} {(sale.amount || 0).toFixed(2)}</TableCell>
-                    <TableCell className="font-medium text-green-600">
-                      {currentOrganization?.currency || 'GH₵'} {((sale.amount || 0) * ((sale as any).quantity || 1)).toFixed(2)}
+                        <TableCell className="">
+                          <SalesItemsDisplay
+                            items={
+                              sale.sale_line_items || sale.sale_items || []
+                            }
+                          />
+                        </TableCell>
+                        <TableCell>{sale.customer_name || '-'}</TableCell>
+                        <TableCell>
+                          {currentOrganization?.currency || 'GH₵'}{' '}
+                          {sale.total_amount?.toFixed(2) || '0.00'}
                         </TableCell>
                         <TableCell>
                           <ReceiptGenerator sale={sale} />
                         </TableCell>
                         <TableCell>
                           <Button
-                            size="icon"
                             variant="outline"
+                            size="sm"
                             onClick={() => handleEdit(sale)}
                           >
                             <Edit className="h-4 w-4" />
@@ -218,7 +244,7 @@ export default function Sales() {
                     {paginatedSales.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={8}
+                          colSpan={7}
                           className="text-center text-muted-foreground"
                         >
                           No sales found.
@@ -273,13 +299,16 @@ export default function Sales() {
       </Tabs>
 
       {/* Edit Sale Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent>
+      <Dialog open={isEditDialogOpen} onOpenChange={handleDialogClose}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Edit Sale</DialogTitle>
           </DialogHeader>
-          {editSale && (
-            <SaleForm sale={editSale} onSuccess={handleDialogClose} />
+          {editingSale && (
+            <MultipleSaleForm
+              sale={editingSale}
+              onSuccess={handleDialogClose}
+            />
           )}
         </DialogContent>
       </Dialog>

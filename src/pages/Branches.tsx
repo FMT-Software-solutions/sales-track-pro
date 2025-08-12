@@ -23,7 +23,9 @@ type Branch = Database['public']['Tables']['branches']['Row'];
 
 export function Branches() {
   const { currentOrganization } = useOrganization();
-  const { data: branches = [], isLoading } = useBranches(currentOrganization?.id);
+  const { data: branches = [], isLoading } = useBranches(
+    currentOrganization?.id
+  );
   const [selectedBranch, setSelectedBranch] = useState<Branch | undefined>();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -88,7 +90,7 @@ export function Branches() {
             Branch Management
           </h1>
           <p className="text-muted-foreground">
-            Manage your food vendor branches and locations
+            Manage your sales vendor branches and locations
           </p>
         </div>
 
@@ -171,7 +173,10 @@ export function Branches() {
               )}
               <div className="flex items-center text-xs text-muted-foreground">
                 <Calendar className="mr-1 h-3 w-3" />
-                Created {branch.created_at ? format(new Date(branch.created_at), 'MMM d, yyyy') : 'Unknown'}
+                Created{' '}
+                {branch.created_at
+                  ? format(new Date(branch.created_at), 'MMM d, yyyy')
+                  : 'Unknown'}
               </div>
             </CardContent>
           </Card>

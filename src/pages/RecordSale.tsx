@@ -5,7 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { SaleForm } from '@/components/forms/SaleForm';
+import { MultipleSaleForm } from '@/components/forms/MultipleSaleForm';
 import { TrendingUp } from 'lucide-react';
 
 export function RecordSale() {
@@ -32,7 +32,7 @@ export function RecordSale() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <SaleForm />
+            <MultipleSaleForm />
           </CardContent>
         </Card>
 

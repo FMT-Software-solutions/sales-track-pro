@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Card,
   CardContent,
@@ -15,13 +15,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { useUpdateOrganization } from '@/hooks/queries';
+import { useUpdateOrganization, useUpdateProfile } from '@/hooks/queries';
 import { toast } from 'sonner';
 import { Settings as SettingsIcon, User, Shield, Building2, Users } from 'lucide-react';
 
 export function Settings() {
   const { user } = useAuthStore();
-  const { currentOrganization, userOrganizations } = useOrganization();
+  const { currentOrganization, setCurrentOrganization, userOrganizations } = useOrganization();
   const [orgName, setOrgName] = useState(currentOrganization?.name || '');
 
   const [orgEmail, setOrgEmail] = useState(currentOrganization?.email || '');
@@ -29,13 +29,17 @@ export function Settings() {
   const [orgAddress, setOrgAddress] = useState(currentOrganization?.address || '');
   const [orgCurrency, setOrgCurrency] = useState(currentOrganization?.currency || 'GH₵');
   
+  // Profile form refs
+  const fullNameRef = useRef<HTMLInputElement>(null);
+  
   const updateOrganizationMutation = useUpdateOrganization();
+  const updateProfileMutation = useUpdateProfile();
 
   const handleUpdateOrganization = async () => {
     if (!currentOrganization) return;
     
     try {
-      await updateOrganizationMutation.mutateAsync({
+      const updatedOrg = await updateOrganizationMutation.mutateAsync({
         id: currentOrganization.id,
         name: orgName,
         email: orgEmail,
@@ -43,9 +47,36 @@ export function Settings() {
         address: orgAddress,
         currency: orgCurrency,
       });
+      
+      // Update the current organization in context with the new data
+      setCurrentOrganization(updatedOrg);
+      
       toast.success('Organization updated successfully');
     } catch (error) {
+      console.error('Error updating organization:', error);
       toast.error('Failed to update organization');
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    if (!user?.id) return;
+
+    const fullName = fullNameRef.current?.value;
+    if (!fullName) {
+      toast.error('Please enter your full name');
+      return;
+    }
+
+    try {
+      await updateProfileMutation.mutateAsync({
+        id: user.id,
+        full_name: fullName,
+      });
+
+      toast.success('Profile updated successfully');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast.error('Failed to update profile');
     }
   };
 
@@ -86,6 +117,7 @@ export function Settings() {
                     <Label htmlFor="full-name">Full Name</Label>
                     <Input
                       id="full-name"
+                      ref={fullNameRef}
                       defaultValue={user?.profile?.full_name || ''}
                       placeholder="Enter your full name"
                     />
@@ -119,8 +151,22 @@ export function Settings() {
                 <Separator />
 
                 <div className="flex justify-end space-x-4">
-                  <Button variant="outline">Cancel</Button>
-                  <Button>Save Changes</Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => {
+                      if (fullNameRef.current) {
+                        fullNameRef.current.value = user?.profile?.full_name || '';
+                      }
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleUpdateProfile}
+                    disabled={updateProfileMutation.isPending}
+                  >
+                    {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

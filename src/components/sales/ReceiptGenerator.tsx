@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
 interface ReceiptGeneratorProps {
-  sale: Sale & { branches?: { name: string; location: string } };
+  sale: Sale;
 }
 
 export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
@@ -31,7 +31,7 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
 
   const handlePrint = async () => {
     await trackReceiptGeneration();
-    
+
     const printContent = document.getElementById('receipt-content');
     if (!printContent) return;
 
@@ -123,7 +123,7 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
   const handleDownloadPDF = async () => {
     try {
       await trackReceiptGeneration();
-      
+
       // For a simple implementation, we'll use the browser's print to PDF functionality
       // In a production app, you might want to use a library like jsPDF or Puppeteer
       const printContent = document.getElementById('receipt-content');
@@ -235,7 +235,7 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
           >
             <div className="header text-center border-b-2 border-black pb-2 mb-4">
               <div className="business-name text-lg font-bold mb-1">
-                Food Track Pro
+                {currentOrganization?.name || 'Sales Track Pro'}
               </div>
               <div className="branch-info text-xs mb-1">
                 {(sale as any).branches?.name || 'Unknown Branch'}
@@ -263,22 +263,34 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
             </div>
 
             <div className="items border-t border-b border-dashed border-black py-2 my-4">
-              <div className="item-row flex justify-between mb-2">
-                <span>{(sale as any).sales_items?.name || 'Sale Item'}</span>
-                <span>{currentOrganization?.currency || 'GH₵'} {(sale.amount || 0).toFixed(2)}</span>
-              </div>
-              <div className="text-xs text-gray-600 mt-1">
-                Quantity: {(sale as any).quantity || 1} × {currentOrganization?.currency || 'GH₵'} {(sale.amount || 0).toFixed(2)}
-              </div>
+              {(sale.sale_line_items || sale.sale_items || []).map(
+                (item, index) => (
+                  <div key={item.id || index} className="mb-2">
+                    <div className="item-row flex justify-between">
+                      <span>{item.products?.name || 'Sale Item'}</span>
+                      <span>
+                        {currentOrganization?.currency || 'GH₵'}{' '}
+                        {(item.total_price || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      Qty: {item.quantity} ×{' '}
+                      {currentOrganization?.currency || 'GH₵'}{' '}
+                      {(item.unit_price || 0).toFixed(2)}
+                    </div>
+                  </div>
+                )
+              )}
               {sale.customer_name && (
-                <div className="text-xs text-gray-600 mb-2">
+                <div className="text-xs text-gray-600 mt-2 pt-2 border-t border-dashed border-gray-400">
                   Customer: {sale.customer_name}
                 </div>
               )}
             </div>
 
             <div className="total text-center text-base font-bold mt-4">
-              TOTAL: {currentOrganization?.currency || 'GH₵'} {((sale.amount || 0) * ((sale as any).quantity || 1)).toFixed(2)}
+              TOTAL: {currentOrganization?.currency || 'GH₵'}{' '}
+              {(sale.total_amount || sale.amount || 0).toFixed(2)}
             </div>
 
             <div className="footer text-center mt-5 text-xs border-t border-dashed border-black pt-2">

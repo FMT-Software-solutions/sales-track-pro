@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
   Settings,
   LogOut,
   TrendingUp,
+  RefreshCw,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -33,6 +34,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSignOut = async () => {
     try {
@@ -42,6 +44,11 @@ export function AppLayout({ children }: AppLayoutProps) {
     } catch (error) {
       console.error('Sign out error:', error);
     }
+  };
+
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    window.location.reload();
   };
 
   const filteredNavigation = navigation.filter(
@@ -56,7 +63,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="flex items-center space-x-2">
             <TrendingUp className="h-8 w-8 text-blue-600" />
             <span className="hidden md:inline text-xl font-bold text-gray-900">
-              FoodTrack Pro
+              SalesTrack Pro
             </span>
           </div>
         </div>
@@ -123,10 +130,24 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex-1" />
-            <OrganizationSelector />
+            <div className="flex items-center space-x-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="h-8 w-8"
+                aria-label="Refresh page"
+              >
+                <RefreshCw
+                  className={cn('h-4 w-4', isRefreshing && 'animate-spin')}
+                />
+              </Button>
+              <OrganizationSelector />
+            </div>
           </div>
         </div>
-        
+
         <main className="py-8">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {children}

@@ -43,10 +43,8 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
         setUser(user);
         toast.success('Welcome back!');
       }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to sign in');
+    } catch (error) {
+      toast.error((error as any).message || 'Failed to sign in');
     } finally {
       setIsLoading(false);
     }
@@ -60,14 +58,12 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
             <div className="flex items-center space-x-2">
               <TrendingUp className="h-10 w-10 text-blue-600" />
               <span className="text-2xl font-bold text-gray-900">
-                FoodTrack Pro
+                SalesTrack Pro
               </span>
             </div>
           </div>
           <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>
-            Sign in to your account to manage your food business
-          </CardDescription>
+          <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

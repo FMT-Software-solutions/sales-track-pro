@@ -1,5 +1,5 @@
 /*
-  # FoodTrack Pro Database Schema
+  # SalesTrack Pro Database Schema
 
   1. New Tables
     - `profiles`

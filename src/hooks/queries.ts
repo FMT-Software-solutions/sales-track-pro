@@ -4,9 +4,27 @@ import type { Database } from '@/lib/supabase';
 import { getPeriodRange } from '@/lib/utils';
 
 export type Branch = Database['public']['Tables']['branches']['Row'];
-export type Sale = Database['public']['Tables']['sales']['Row'];
+export type Sale = Database['public']['Tables']['sales']['Row'] & {
+  branches?: {
+    name: string;
+    location: string;
+  };
+  sale_line_items?: SaleLineItem[];
+  // Keep old property for backward compatibility during transition
+  sale_items?: SaleItem[];
+};
 export type Expense = Database['public']['Tables']['expenses']['Row'];
-export type SalesItem = Database['public']['Tables']['sales_items']['Row'];
+// Legacy types for backward compatibility - these tables have been renamed
+export type SalesItem = Product;
+export type SaleItem = SaleLineItem;
+export type Product = Database['public']['Tables']['products']['Row'];
+export type SaleLineItem = Database['public']['Tables']['sale_line_items']['Row'] & {
+  products?: {
+    id: string;
+    name: string;
+    price: number;
+  };
+};
 export type ExpenseCategory = Database['public']['Tables']['expense_categories']['Row'];
 export type Organization = Database['public']['Tables']['organizations']['Row'];
 export type UserOrganization = Database['public']['Tables']['user_organizations']['Row'];
@@ -98,8 +116,16 @@ export function useSales(
             name,
             location
           ),
-          sales_items (
-            name
+          sale_line_items (
+            id,
+            quantity,
+            unit_price,
+            total_price,
+            products (
+              id,
+              name,
+              price
+            )
           )
         `
         )
@@ -159,7 +185,7 @@ export function useUpdateSaleReceiptGenerated() {
     mutationFn: async (saleId: string) => {
       const { data, error } = await supabase
         .from('sales')
-        .update({ receipt_generated: true })
+        .update({ receipt_generated_at: new Date().toISOString() })
         .eq('id', saleId)
         .select()
         .single();
@@ -261,12 +287,12 @@ export function useDeleteExpenseCategory() {
 }
 
 // Sales Items
-export function useSalesItems(organizationId?: string) {
+export function useProducts(organizationId?: string) {
   return useQuery({
-    queryKey: ['sales-items', organizationId],
+    queryKey: ['products', organizationId],
     queryFn: async () => {
       let query = supabase
-        .from('sales_items')
+        .from('products')
         .select('*')
         .eq('is_active', true)
         .order('name', { ascending: true });
@@ -278,21 +304,24 @@ export function useSalesItems(organizationId?: string) {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as SalesItem[];
+      return data as Product[];
     },
   });
 }
 
-export function useCreateSalesItem() {
+// Keep old hook for backward compatibility during transition
+export const useSalesItems = useProducts;
+
+export function useCreateProduct() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (
-      salesItem: Database['public']['Tables']['sales_items']['Insert']
+      product: Database['public']['Tables']['products']['Insert']
     ) => {
       const { data, error } = await supabase
-        .from('sales_items')
-        .insert(salesItem)
+        .from('products')
+        .insert(product)
         .select()
         .single();
 
@@ -300,21 +329,24 @@ export function useCreateSalesItem() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }
 
-export function useUpdateSalesItem() {
+// Keep old hook for backward compatibility during transition
+export const useCreateSalesItem = useCreateProduct;
+
+export function useUpdateProduct() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({
       id,
       ...updates
-    }: { id: string } & Database['public']['Tables']['sales_items']['Update']) => {
+    }: { id: string } & Database['public']['Tables']['products']['Update']) => {
       const { data, error } = await supabase
-        .from('sales_items')
+        .from('products')
         .update(updates)
         .eq('id', id)
         .select()
@@ -324,28 +356,34 @@ export function useUpdateSalesItem() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }
 
-export function useDeleteSalesItem() {
+// Keep old hook for backward compatibility during transition
+export const useUpdateSalesItem = useUpdateProduct;
+
+export function useDeleteProduct() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('sales_items')
+        .from('products')
         .update({ is_active: false })
         .eq('id', id);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sales-items'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }
+
+// Keep old hook for backward compatibility during transition
+export const useDeleteSalesItem = useDeleteProduct;
 
 export function useUpdateSale() {
   const queryClient = useQueryClient();
@@ -370,6 +408,125 @@ export function useUpdateSale() {
     },
   });
 }
+
+// Sale Line Items (junction table)
+export function useSaleLineItems(saleId: string) {
+  return useQuery({
+    queryKey: ['sale-line-items', saleId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('sale_line_items')
+        .select(
+          `
+          *,
+          products (
+            id,
+            name,
+            price
+          )
+        `
+        )
+        .eq('sale_id', saleId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data as SaleLineItem[];
+    },
+    enabled: !!saleId,
+  });
+}
+
+// Keep old hook for backward compatibility during transition
+export const useSaleItems = useSaleLineItems;
+
+export function useCreateSaleLineItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      saleLineItem: Database['public']['Tables']['sale_line_items']['Insert']
+    ) => {
+      const { data, error } = await supabase
+        .from('sale_line_items')
+        .insert(saleLineItem)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sale-line-items', data.sale_id] });
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+// Keep old hook for backward compatibility during transition
+export const useCreateSaleItem = useCreateSaleLineItem;
+
+export function useUpdateSaleLineItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: { id: string } & Database['public']['Tables']['sale_line_items']['Update']) => {
+      const { data, error } = await supabase
+        .from('sale_line_items')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['sale-line-items', data.sale_id] });
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+// Keep old hook for backward compatibility during transition
+export const useUpdateSaleItem = useUpdateSaleLineItem;
+
+export function useDeleteSaleLineItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      // Get the sale_id before deleting
+      const { data: saleLineItem } = await supabase
+        .from('sale_line_items')
+        .select('sale_id')
+        .eq('id', id)
+        .single();
+
+      const { error } = await supabase
+        .from('sale_line_items')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return saleLineItem?.sale_id;
+    },
+    onSuccess: (saleId) => {
+      if (saleId) {
+        queryClient.invalidateQueries({ queryKey: ['sale-line-items', saleId] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+// Keep old hook for backward compatibility during transition
+export const useDeleteSaleItem = useDeleteSaleLineItem;
 
 // Expenses
 export function useExpenses(
@@ -643,6 +800,31 @@ export function useUpdateOrganization() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['user-organizations'] });
       queryClient.invalidateQueries({ queryKey: ['current-organization'] });
+    },
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: { id: string } & Database['public']['Tables']['profiles']['Update']) => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profile'] });
+      queryClient.invalidateQueries({ queryKey: ['user'] });
     },
   });
 }
