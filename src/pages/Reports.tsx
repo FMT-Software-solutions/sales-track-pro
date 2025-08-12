@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSales, useExpenses, useBranches } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -45,29 +45,47 @@ export function Reports() {
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
 
-  const { data: branches = [] } = useBranches(currentOrganization?.id);
+  const { data: branches = [] } = useBranches(currentOrganization?.id, user);
+
+  // Initialize branch when user and branches data are available
+  useEffect(() => {
+    if (user?.profile && branches.length > 0) {
+      if (user.profile.role !== 'admin' && user.profile.branch_id) {
+        // Non-admin users: set to their assigned branch (should be the only one returned)
+        setSelectedBranch(user.profile.branch_id);
+      } else if (user.profile.role === 'admin' && selectedBranch === '') {
+        // Admin users: set to 'all' if not already set
+        setSelectedBranch('all');
+      }
+    }
+  }, [user?.profile, branches, selectedBranch]);
+
+  // For non-admin users, automatically set their branch and prevent changing it
+  const effectiveBranchId =
+    user?.profile?.role === 'admin'
+      ? selectedBranch === 'all'
+        ? undefined
+        : selectedBranch
+      : user?.profile?.branch_id;
+
   const { data: sales = [], isLoading: salesLoading } = useSales(
-    selectedBranch === 'all' ? undefined : selectedBranch,
+    effectiveBranchId || undefined,
     startDate.toISOString(),
     endDate.toISOString(),
     currentOrganization?.id
   );
   const { data: expenses = [], isLoading: expensesLoading } = useExpenses(
-    selectedBranch === 'all' ? undefined : selectedBranch,
+    effectiveBranchId || undefined,
     undefined,
     startDate.toISOString(),
     endDate.toISOString(),
     currentOrganization?.id
   );
 
-  const userBranches =
-    user?.profile?.role === 'admin'
-      ? branches.filter((branch) => branch.is_active)
-      : branches.filter(
-          (branch) => branch.id === user?.profile?.branch_id && branch.is_active
-        );
+  // Since useBranches now returns the correct branches based on user role, we just need to filter for active ones
+  const userBranches = branches.filter((branch) => branch.is_active);
 
   const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
   const totalExpenses = expenses.reduce(
@@ -136,10 +154,10 @@ export function Reports() {
     // Sales Table
     if (sales.length > 0) {
       const salesData: any[] = [];
-      
+
       sales.forEach((sale) => {
         const saleLineItems = (sale as any).sale_line_items || [];
-        
+
         if (saleLineItems.length === 0) {
           // If no line items, create a single row with sale data
           salesData.push([
@@ -147,8 +165,14 @@ export function Reports() {
             (sale as any).branches?.name || 'Unknown',
             '-',
             '1',
-            formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
-            formatCurrencyForPDF(sale.amount || 0, currentOrganization?.currency),
+            formatCurrencyForPDF(
+              sale.amount || 0,
+              currentOrganization?.currency
+            ),
+            formatCurrencyForPDF(
+              sale.amount || 0,
+              currentOrganization?.currency
+            ),
           ]);
         } else {
           // Create a row for each line item
@@ -158,8 +182,14 @@ export function Reports() {
               (sale as any).branches?.name || 'Unknown',
               lineItem.products?.name || '-',
               lineItem.quantity || 1,
-              formatCurrencyForPDF(lineItem.unit_price || 0, currentOrganization?.currency),
-              formatCurrencyForPDF(lineItem.total_price || 0, currentOrganization?.currency),
+              formatCurrencyForPDF(
+                lineItem.unit_price || 0,
+                currentOrganization?.currency
+              ),
+              formatCurrencyForPDF(
+                lineItem.total_price || 0,
+                currentOrganization?.currency
+              ),
             ]);
           });
         }
@@ -214,28 +244,32 @@ export function Reports() {
       // For sales, create a row for each sale line item
       sales.forEach((sale) => {
         const saleLineItems = (sale as any).sale_line_items || [];
-        
+
         if (saleLineItems.length === 0) {
           // If no line items, create a single row with sale data
-          csvRows.push([
-            (sale as any).sale_date,
-            `"${(sale as any).branches?.name || 'Unknown'}"`,
-            '"-"',
-            '1',
-            (sale as any).amount || 0,
-            (sale as any).amount || 0,
-          ].join(','));
+          csvRows.push(
+            [
+              (sale as any).sale_date,
+              `"${(sale as any).branches?.name || 'Unknown'}"`,
+              '"-"',
+              '1',
+              (sale as any).amount || 0,
+              (sale as any).amount || 0,
+            ].join(',')
+          );
         } else {
           // Create a row for each line item
           saleLineItems.forEach((lineItem: any) => {
-            csvRows.push([
-              (sale as any).sale_date,
-              `"${(sale as any).branches?.name || 'Unknown'}"`,
-              `"${lineItem.products?.name || '-'}"`,
-              lineItem.quantity || 1,
-              lineItem.unit_price || 0,
-              lineItem.total_price || 0,
-            ].join(','));
+            csvRows.push(
+              [
+                (sale as any).sale_date,
+                `"${(sale as any).branches?.name || 'Unknown'}"`,
+                `"${lineItem.products?.name || '-'}"`,
+                lineItem.quantity || 1,
+                lineItem.unit_price || 0,
+                lineItem.total_price || 0,
+              ].join(',')
+            );
           });
         }
       });
@@ -307,27 +341,30 @@ export function Reports() {
 
             {/* Right side: Branch Selector and Export Button */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-              {user?.profile?.role === 'admin' && (
-                <div className="space-y-2">
-                  <Label htmlFor="branch">Branch</Label>
-                  <Select
-                    value={selectedBranch}
-                    onValueChange={setSelectedBranch}
-                  >
-                    <SelectTrigger className="w-[200px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+              <div className="space-y-2">
+                <Label htmlFor="branch">Branch</Label>
+                <Select
+                  value={selectedBranch}
+                  onValueChange={setSelectedBranch}
+                  disabled={
+                    user?.profile?.role !== 'admin' && userBranches.length <= 1
+                  }
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder={selectedBranch === '' ? "Loading..." : "Select branch"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {user?.profile?.role === 'admin' && (
                       <SelectItem value="all">All Branches</SelectItem>
-                      {userBranches.map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                    )}
+                    {userBranches.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div className="flex items-end space-x-2">
                 <Button onClick={exportToPDF}>
@@ -454,7 +491,8 @@ export function Reports() {
                           </TableCell>
                           <TableCell>
                             {(sale as any).sale_line_items?.reduce(
-                              (total: number, item: any) => total + (item.quantity || 0),
+                              (total: number, item: any) =>
+                                total + (item.quantity || 0),
                               0
                             ) || '-'}
                           </TableCell>

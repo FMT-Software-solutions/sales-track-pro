@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useDashboardData, useBranches } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -26,22 +26,40 @@ const periods = [
 export function Dashboard() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('month');
 
-  const { data: branches = [] } = useBranches(currentOrganization?.id);
+  const { data: branches = [] } = useBranches(currentOrganization?.id, user);
+
+  // Initialize branch when user and branches data are available
+  useEffect(() => {
+    if (user?.profile && branches.length > 0) {
+      if (user.profile.role !== 'admin' && user.profile.branch_id) {
+        // Non-admin users: set to their assigned branch (should be the only one returned)
+        setSelectedBranch(user.profile.branch_id);
+      } else if (user.profile.role === 'admin' && selectedBranch === '') {
+        // Admin users: set to 'all' if not already set
+        setSelectedBranch('all');
+      }
+    }
+  }, [user?.profile, branches, selectedBranch]);
+
+  // For non-admin users, automatically set their branch and prevent changing it
+  const effectiveBranchId =
+    user?.profile?.role === 'admin'
+      ? selectedBranch === 'all'
+        ? undefined
+        : selectedBranch
+      : user?.profile?.branch_id;
+
   const { data: dashboardData, isLoading } = useDashboardData(
-    selectedBranch === 'all' ? undefined : selectedBranch,
+    effectiveBranchId || undefined,
     selectedPeriod,
     currentOrganization?.id
   );
 
-  const userBranches =
-    user?.profile?.role === 'admin'
-      ? branches.filter((branch) => branch.is_active)
-      : branches.filter(
-          (branch) => branch.id === user?.profile?.branch_id && branch.is_active
-        );
+  // Since useBranches now returns the correct branches based on user role, we just need to filter for active ones
+  const userBranches = branches.filter((branch) => branch.is_active);
 
   const generateChartData = () => {
     if (!dashboardData) return [];
@@ -161,25 +179,43 @@ export function Dashboard() {
   return (
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-          Dashboard
-        </h1>
-        <div className="flex items-center space-x-4 mt-4 md:mt-0">
-          {user?.profile?.role === 'admin' && (
-            <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Select branch" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Branches</SelectItem>
-                {userBranches.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
-                    {branch.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Dashboard
+          </h1>
+          {user?.profile?.role !== 'admin' && userBranches.length > 0 && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Viewing data for:{' '}
+              <span className="font-medium">{userBranches[0]?.name}</span>
+            </p>
           )}
+        </div>
+        <div className="flex items-center space-x-4 mt-4 md:mt-0">
+          <Select
+            value={selectedBranch}
+            onValueChange={setSelectedBranch}
+            disabled={
+              user?.profile?.role !== 'admin' && userBranches.length <= 1
+            }
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue
+                placeholder={
+                  selectedBranch === '' ? 'Loading...' : 'Select branch'
+                }
+              />
+            </SelectTrigger>
+            <SelectContent>
+              {user?.profile?.role === 'admin' && (
+                <SelectItem value="all">All Branches</SelectItem>
+              )}
+              {userBranches.map((branch) => (
+                <SelectItem key={branch.id} value={branch.id}>
+                  {branch.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
             <SelectTrigger className="w-32">

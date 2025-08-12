@@ -21,6 +21,7 @@ import {
   Expense,
 } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
+import { UserInfo } from '@/components/ui/user-info';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Calendar22 } from '@/components/ui/calendar22';
@@ -136,7 +137,11 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
     if (!user?.id || !currentOrganization?.id) return;
     try {
       if (expense) {
-        await updateExpense.mutateAsync({ id: expense.id, ...data });
+        await updateExpense.mutateAsync({
+          id: expense.id,
+          ...data,
+          last_updated_by: user.id,
+        });
         toast.success('Expense updated successfully');
       } else {
         // Find the selected category name for backward compatibility
@@ -313,6 +318,24 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
           {...register('description')}
         />
       </div>
+
+      {/* User Information - Only visible to admins */}
+      {expense && (
+        <div className="space-y-2">
+          <UserInfo
+            userId={expense.created_by}
+            userProfile={expense.created_by_profile}
+            label="Recorded by"
+          />
+          {expense.last_updated_by && (
+            <UserInfo
+              userId={expense.last_updated_by}
+              userProfile={expense.last_updated_by_profile}
+              label="Last updated by"
+            />
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end space-x-4">
         <Button type="button" variant="outline" onClick={() => reset()}>

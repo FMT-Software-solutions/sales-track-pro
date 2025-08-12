@@ -35,6 +35,7 @@ import {
 } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { UserInfo } from '@/components/ui/user-info';
 import { toast } from 'sonner';
 import React from 'react';
 
@@ -100,7 +101,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
       saleDate: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
       branchId: userBranches.length === 1 ? userBranches[0].id : '',
       customerName: '',
-      items: [{ productId: '', quantity: 1, unitPrice: 0 }],
+      items: [],
     },
   });
 
@@ -218,6 +219,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
           customer_name: data.customerName || null,
           sale_date: data.saleDate,
           amount: totalAmount, // Keep for backward compatibility
+          last_updated_by: user.id,
         });
 
         // Delete existing sale line items
@@ -408,7 +410,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         )}
 
         {/* Items Table */}
-        {fields.length > 0 && (
+        {fields.length > 0 ? (
           <div className="border rounded-lg">
             <Table>
               <TableHeader>
@@ -552,6 +554,8 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
               </TableBody>
             </Table>
           </div>
+        ) : (
+          <p className="text-sm text-gray-500 border border-dashed py-6 text-center bg-gray-50/60">Add sale items</p>
         )}
 
         {errors.items && (
@@ -567,6 +571,24 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
           rows={3}
         />
       </div>
+
+      {/* User Information - Only visible to admins */}
+      {sale && (
+        <div className="space-y-2">
+          <UserInfo
+            userId={sale.created_by}
+            userProfile={sale.created_by_profile}
+            label="Recorded by"
+          />
+          {sale.last_updated_by && (
+            <UserInfo
+              userId={sale.last_updated_by}
+              userProfile={sale.last_updated_by_profile}
+              label="Last updated by"
+            />
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-4 border-t">
         <div className="text-lg font-semibold">

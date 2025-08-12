@@ -49,9 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
           loading: false,
         });
 
-        // console.log('Auth initialized successfully with user');
       } else {
-        console.log('No session found, user not authenticated');
         set({ user: null });
       }
     } catch (error) {

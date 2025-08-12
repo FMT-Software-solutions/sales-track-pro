@@ -16,6 +16,8 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Branches } from '@/pages/Branches';
 import { Reports } from '@/pages/Reports';
 import { Settings } from '@/pages/Settings';
+import UserManagement from '@/pages/UserManagement';
+import { PasswordReset } from '@/pages/PasswordReset';
 import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
 
@@ -41,6 +43,7 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/password-reset" element={<PasswordReset />} />
           <Route
             path="/dashboard"
             element={
@@ -96,6 +99,18 @@ function App() {
                 <OrganizationProvider>
                   <AppLayout>
                     <Reports />
+                  </AppLayout>
+                </OrganizationProvider>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute requiredRole="admin">
+                <OrganizationProvider>
+                  <AppLayout>
+                    <UserManagement />
                   </AppLayout>
                 </OrganizationProvider>
               </ProtectedRoute>

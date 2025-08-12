@@ -18,13 +18,17 @@ export function ProtectedRoute({
     if (loading) return;
 
     if (!user) {
-      console.log('No user found, redirecting to login');
       navigate('/login', { replace: true });
       return;
     }
 
+    // Check if user requires password reset
+    if (user.user_metadata?.requires_password_reset) {
+      navigate('/password-reset', { replace: true });
+      return;
+    }
+
     if (requiredRole && user.profile?.role !== requiredRole) {
-      console.log('User lacks required role, redirecting to dashboard');
       navigate('/dashboard', { replace: true });
       return;
     }
@@ -41,7 +45,11 @@ export function ProtectedRoute({
     );
   }
 
-  if (!user || (requiredRole && user.profile?.role !== requiredRole)) {
+  if (
+    !user ||
+    user.user_metadata?.requires_password_reset ||
+    (requiredRole && user.profile?.role !== requiredRole)
+  ) {
     return null;
   }
 

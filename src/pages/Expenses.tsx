@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useExpenses, useBranches } from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useAuthStore } from '@/stores/auth';
@@ -46,8 +46,22 @@ import type { Expense } from '@/hooks/queries';
 export default function Expenses() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const { data: branches = [] } = useBranches(currentOrganization?.id);
-  const [selectedBranch, setSelectedBranch] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('');
+
+  const { data: branches = [] } = useBranches(currentOrganization?.id, user);
+
+  // Initialize branch when user and branches data are available
+  useEffect(() => {
+    if (user?.profile && branches.length > 0) {
+      if (user.profile.role !== 'admin' && user.profile.branch_id) {
+        // Non-admin users: set to their assigned branch (should be the only one returned)
+        setSelectedBranch(user.profile.branch_id);
+      } else if (user.profile.role === 'admin' && selectedBranch === '') {
+        // Admin users: set to 'all' if not already set
+        setSelectedBranch('all');
+      }
+    }
+  }, [user?.profile, branches, selectedBranch]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const {
     searchValue,
@@ -59,20 +73,24 @@ export default function Expenses() {
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
+  // For non-admin users, automatically set their branch and prevent changing it
+  const effectiveBranchId =
+    user?.profile?.role === 'admin'
+      ? selectedBranch === 'all'
+        ? undefined
+        : selectedBranch
+      : user?.profile?.branch_id;
+
   const { data: expenses = [] } = useExpenses(
-    selectedBranch === 'all' ? undefined : selectedBranch,
+    effectiveBranchId || undefined,
     undefined,
     dateRange?.from ? dateRange.from.toISOString() : undefined,
     dateRange?.to ? dateRange.to.toISOString() : undefined,
     currentOrganization?.id
   );
 
-  const userBranches =
-    user?.profile?.role === 'admin'
-      ? branches.filter((branch) => branch.is_active)
-      : branches.filter(
-          (branch) => branch.id === user?.profile?.branch_id && branch.is_active
-        );
+  // Since useBranches now returns the correct branches based on user role, we just need to filter for active ones
+  const userBranches = branches.filter((branch) => branch.is_active);
 
   // Filter expenses by debounced search (branch and date filtering now handled by the query)
   const filteredExpenses = expenses.filter((expense: Expense) => {
@@ -201,12 +219,22 @@ export default function Expenses() {
                       setSelectedBranch(v);
                       setPage(1);
                     }}
+                    disabled={
+                      user?.profile?.role !== 'admin' &&
+                      userBranches.length <= 1
+                    }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select branch" />
+                      <SelectValue
+                        placeholder={
+                          selectedBranch === '' ? 'Loading...' : 'Select branch'
+                        }
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Branches</SelectItem>
+                      {user?.profile?.role === 'admin' && (
+                        <SelectItem value="all">All Branches</SelectItem>
+                      )}
                       {userBranches.map((branch) => (
                         <SelectItem key={branch.id} value={branch.id}>
                           {branch.name}

@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import type { Database } from '@/lib/supabase';
 import { getPeriodRange } from '@/lib/utils';
+import type { AuthUser } from '@/lib/auth';
 
 export type Branch = Database['public']['Tables']['branches']['Row'];
 export type Sale = Database['public']['Tables']['sales']['Row'] & {
@@ -12,8 +13,29 @@ export type Sale = Database['public']['Tables']['sales']['Row'] & {
   sale_line_items?: SaleLineItem[];
   // Keep old property for backward compatibility during transition
   sale_items?: SaleItem[];
+  created_by_profile?: {
+    id: string;
+    full_name: string;
+  };
+  last_updated_by_profile?: {
+    id: string;
+    full_name: string;
+  };
 };
-export type Expense = Database['public']['Tables']['expenses']['Row'];
+export type Expense = Database['public']['Tables']['expenses']['Row'] & {
+  branches?: {
+    name: string;
+    location: string;
+  };
+  created_by_profile?: {
+    id: string;
+    full_name: string;
+  };
+  last_updated_by_profile?: {
+    id: string;
+    full_name: string;
+  };
+};
 // Legacy types for backward compatibility - these tables have been renamed
 export type SalesItem = Product;
 export type SaleItem = SaleLineItem;
@@ -30,9 +52,9 @@ export type Organization = Database['public']['Tables']['organizations']['Row'];
 export type UserOrganization = Database['public']['Tables']['user_organizations']['Row'];
 
 // Branches
-export function useBranches(organizationId?: string) {
+export function useBranches(organizationId?: string, user?: AuthUser | null) {
   return useQuery({
-    queryKey: ['branches', organizationId],
+    queryKey: ['branches', organizationId, user?.profile?.role, user?.profile?.branch_id],
     queryFn: async () => {
       let query = supabase
         .from('branches')
@@ -41,6 +63,11 @@ export function useBranches(organizationId?: string) {
 
       if (organizationId) {
         query = query.eq('organization_id', organizationId);
+      }
+
+      // If user is not admin and has a specific branch, only return their branch
+      if (user?.profile?.role !== 'admin' && user?.profile?.branch_id) {
+        query = query.eq('id', user.profile.branch_id);
       }
 
       const { data, error } = await query;
@@ -126,6 +153,14 @@ export function useSales(
               name,
               price
             )
+          ),
+          created_by_profile:profiles!created_by (
+            id,
+            full_name
+          ),
+          last_updated_by_profile:profiles!last_updated_by (
+            id,
+            full_name
           )
         `
         )
@@ -547,6 +582,14 @@ export function useExpenses(
           branches (
             name,
             location
+          ),
+          created_by_profile:profiles!created_by (
+            id,
+            full_name
+          ),
+          last_updated_by_profile:profiles!last_updated_by (
+            id,
+            full_name
           )
         `
         )
@@ -705,6 +748,12 @@ export function useUserOrganizations() {
   return useQuery({
     queryKey: ['user-organizations'],
     queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       const { data, error } = await supabase
         .from('user_organizations')
         .select(`
@@ -722,11 +771,14 @@ export function useUserOrganizations() {
             updated_at
           )
         `)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data;
     },
+    enabled: true, // Always enabled since we check for user inside the queryFn
   });
 }
 

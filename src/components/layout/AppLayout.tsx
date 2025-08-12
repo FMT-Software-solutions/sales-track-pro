@@ -15,6 +15,7 @@ import {
   LogOut,
   TrendingUp,
   RefreshCw,
+  Users,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -27,6 +28,7 @@ const navigation = [
   { name: 'Sales', href: '/sales', icon: Plus },
   { name: 'Expenses', href: '/expenses', icon: Minus },
   { name: 'Reports', href: '/reports', icon: FileText },
+  { name: 'User Management', href: '/users', icon: Users, role: 'admin' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

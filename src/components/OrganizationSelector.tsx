@@ -34,7 +34,6 @@ export function OrganizationSelector() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
 
-
   const createOrganizationMutation = useCreateOrganization();
 
   const handleCreateOrganization = async () => {
@@ -52,7 +51,6 @@ export function OrganizationSelector() {
       setIsCreateDialogOpen(false);
       setNewOrgName('');
 
-
       // Switch to the new organization
       setCurrentOrganization(newOrg);
     } catch (error) {
@@ -60,8 +58,19 @@ export function OrganizationSelector() {
     }
   };
 
+  // Filter for active memberships and remove duplicates
+  const uniqueOrganizations =
+    userOrganizations?.filter(
+      (userOrg, index, self) =>
+        userOrg.is_active &&
+        userOrg.organizations &&
+        self.findIndex(
+          (item) => item.organizations?.id === userOrg.organizations?.id
+        ) === index
+    ) || [];
+
   const handleOrganizationChange = (organizationId: string) => {
-    const selectedOrg = userOrganizations?.find(
+    const selectedOrg = uniqueOrganizations.find(
       (userOrg) => userOrg.organizations?.id === organizationId
     )?.organizations;
 
@@ -70,7 +79,7 @@ export function OrganizationSelector() {
     }
   };
 
-  if (!userOrganizations || userOrganizations.length === 0) {
+  if (uniqueOrganizations.length === 0) {
     return (
       <div className="flex items-center space-x-2">
         <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -90,9 +99,9 @@ export function OrganizationSelector() {
           <SelectValue placeholder="Select organization" />
         </SelectTrigger>
         <SelectContent>
-          {userOrganizations.map((userOrg) => (
+          {uniqueOrganizations.map((userOrg, index) => (
             <SelectItem
-              key={userOrg.organizations?.id}
+              key={`${userOrg.organizations?.id}-${index}`}
               value={userOrg.organizations?.id || ''}
             >
               <div className="flex flex-col">
@@ -128,7 +137,6 @@ export function OrganizationSelector() {
                   placeholder="Enter organization name"
                 />
               </div>
-
             </div>
             <DialogFooter>
               <Button

@@ -107,6 +107,8 @@ export type Database = {
           id: string
           organization_id: string | null
           updated_at: string | null
+          last_updated_by: string | null
+
         }
         Insert: {
           amount: number
@@ -120,6 +122,8 @@ export type Database = {
           id?: string
           organization_id?: string | null
           updated_at?: string | null
+          last_updated_by?: string | null
+
         }
         Update: {
           amount?: number
@@ -133,6 +137,7 @@ export type Database = {
           id?: string
           organization_id?: string | null
           updated_at?: string | null
+          last_updated_by?: string | null
         }
         Relationships: [
           {
@@ -344,6 +349,7 @@ export type Database = {
           sale_date: string
           total_amount: number | null
           updated_at: string | null
+          last_updated_by: string | null
         }
         Insert: {
           amount: number
@@ -358,6 +364,7 @@ export type Database = {
           sale_date: string
           total_amount?: number | null
           updated_at?: string | null
+          last_updated_by?: string | null
         }
         Update: {
           amount?: number
@@ -372,6 +379,7 @@ export type Database = {
           sale_date?: string
           total_amount?: number | null
           updated_at?: string | null
+          last_updated_by?: string | null
         }
         Relationships: [
           {

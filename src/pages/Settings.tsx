@@ -16,28 +16,44 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUpdateOrganization, useUpdateProfile } from '@/hooks/queries';
+import { RoleGuard } from '@/components/auth/RoleGuard';
+import { ChangePassword } from '@/components/auth/ChangePassword';
 import { toast } from 'sonner';
-import { Settings as SettingsIcon, User, Shield, Building2, Users } from 'lucide-react';
+import {
+  Settings as SettingsIcon,
+  User,
+  Shield,
+  Building2,
+  Users,
+} from 'lucide-react';
 
 export function Settings() {
   const { user } = useAuthStore();
-  const { currentOrganization, setCurrentOrganization, userOrganizations } = useOrganization();
+  const {
+    currentOrganization,
+    setCurrentOrganization,
+    userOrganizations,
+  } = useOrganization();
   const [orgName, setOrgName] = useState(currentOrganization?.name || '');
 
   const [orgEmail, setOrgEmail] = useState(currentOrganization?.email || '');
   const [orgPhone, setOrgPhone] = useState(currentOrganization?.phone || '');
-  const [orgAddress, setOrgAddress] = useState(currentOrganization?.address || '');
-  const [orgCurrency, setOrgCurrency] = useState(currentOrganization?.currency || 'GH₵');
-  
+  const [orgAddress, setOrgAddress] = useState(
+    currentOrganization?.address || ''
+  );
+  const [orgCurrency, setOrgCurrency] = useState(
+    currentOrganization?.currency || 'GH₵'
+  );
+
   // Profile form refs
   const fullNameRef = useRef<HTMLInputElement>(null);
-  
+
   const updateOrganizationMutation = useUpdateOrganization();
   const updateProfileMutation = useUpdateProfile();
 
   const handleUpdateOrganization = async () => {
     if (!currentOrganization) return;
-    
+
     try {
       const updatedOrg = await updateOrganizationMutation.mutateAsync({
         id: currentOrganization.id,
@@ -47,10 +63,10 @@ export function Settings() {
         address: orgAddress,
         currency: orgCurrency,
       });
-      
+
       // Update the current organization in context with the new data
       setCurrentOrganization(updatedOrg);
-      
+
       toast.success('Organization updated successfully');
     } catch (error) {
       console.error('Error updating organization:', error);
@@ -92,10 +108,18 @@ export function Settings() {
       </div>
 
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList
+          className={`grid w-full ${
+            user?.profile?.role === 'admin' ? 'grid-cols-3' : 'grid-cols-1'
+          }`}
+        >
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <TabsTrigger value="organization">Organization</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          <RoleGuard allowedRoles={['admin']}>
+            <TabsTrigger value="organization">Organization</TabsTrigger>
+          </RoleGuard>
+          <RoleGuard allowedRoles={['admin']}>
+            <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          </RoleGuard>
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
@@ -139,7 +163,9 @@ export function Settings() {
                   <div className="flex items-center space-x-2">
                     <Badge
                       variant={
-                        user?.profile?.role === 'admin' ? 'default' : 'secondary'
+                        user?.profile?.role === 'admin'
+                          ? 'default'
+                          : 'secondary'
                       }
                     >
                       <Shield className="mr-1 h-3 w-3" />
@@ -150,23 +176,29 @@ export function Settings() {
 
                 <Separator />
 
-                <div className="flex justify-end space-x-4">
-                  <Button 
-                    variant="outline"
-                    onClick={() => {
-                      if (fullNameRef.current) {
-                        fullNameRef.current.value = user?.profile?.full_name || '';
-                      }
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleUpdateProfile}
-                    disabled={updateProfileMutation.isPending}
-                  >
-                    {updateProfileMutation.isPending ? 'Saving...' : 'Save Changes'}
-                  </Button>
+                <div className="flex justify-between items-center">
+                  <ChangePassword />
+                  <div className="flex space-x-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        if (fullNameRef.current) {
+                          fullNameRef.current.value =
+                            user?.profile?.full_name || '';
+                        }
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleUpdateProfile}
+                      disabled={updateProfileMutation.isPending}
+                    >
+                      {updateProfileMutation.isPending
+                        ? 'Saving...'
+                        : 'Save Changes'}
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -178,16 +210,21 @@ export function Settings() {
                   <Users className="mr-2 h-5 w-5" />
                   Organizations
                 </CardTitle>
-                <CardDescription>
-                  Organizations you belong to
-                </CardDescription>
+                <CardDescription>Organizations you belong to</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {userOrganizations?.map((userOrg) => (
-                  <div key={userOrg.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div
+                    key={userOrg.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
                     <div>
-                      <p className="font-medium">{userOrg.organizations?.name}</p>
-                      <p className="text-sm text-muted-foreground">{userOrg.role}</p>
+                      <p className="font-medium">
+                        {userOrg.organizations?.name}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {userOrg.role}
+                      </p>
                     </div>
                     {userOrg.organizations?.id === currentOrganization?.id && (
                       <Badge variant="default">Current</Badge>
@@ -199,129 +236,143 @@ export function Settings() {
           </div>
         </TabsContent>
 
-        <TabsContent value="organization" className="space-y-6">
-          {currentOrganization && (
+        <RoleGuard allowedRoles={['admin']}>
+          <TabsContent value="organization" className="space-y-6">
+            {currentOrganization && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Building2 className="mr-2 h-5 w-5" />
+                    Organization Settings
+                  </CardTitle>
+                  <CardDescription>
+                    Manage your organization details and settings
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="org-name">Organization Name</Label>
+                      <Input
+                        id="org-name"
+                        value={orgName}
+                        onChange={(e) => setOrgName(e.target.value)}
+                        placeholder="Enter organization name"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="org-email">Email</Label>
+                      <Input
+                        id="org-email"
+                        type="email"
+                        value={orgEmail}
+                        onChange={(e) => setOrgEmail(e.target.value)}
+                        placeholder="Enter organization email"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="org-phone">Phone</Label>
+                      <Input
+                        id="org-phone"
+                        value={orgPhone}
+                        onChange={(e) => setOrgPhone(e.target.value)}
+                        placeholder="Enter organization phone"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="org-currency">Currency</Label>
+                      <Input
+                        id="org-currency"
+                        value={orgCurrency}
+                        onChange={(e) => setOrgCurrency(e.target.value)}
+                        placeholder="Enter currency symbol"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="org-address">Address</Label>
+                    <Input
+                      id="org-address"
+                      value={orgAddress}
+                      onChange={(e) => setOrgAddress(e.target.value)}
+                      placeholder="Enter organization address"
+                    />
+                  </div>
+
+                  <Separator />
+
+                  <div className="flex justify-end space-x-4">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setOrgName(currentOrganization.name || '');
+                        setOrgEmail(currentOrganization.email || '');
+                        setOrgPhone(currentOrganization.phone || '');
+                        setOrgAddress(currentOrganization.address || '');
+                        setOrgCurrency(currentOrganization.currency || 'GH₵');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleUpdateOrganization}
+                      disabled={updateOrganizationMutation.isPending}
+                    >
+                      {updateOrganizationMutation.isPending
+                        ? 'Saving...'
+                        : 'Save Changes'}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+        </RoleGuard>
+
+        <RoleGuard allowedRoles={['admin']}>
+          <TabsContent value="preferences" className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <Building2 className="mr-2 h-5 w-5" />
-                  Organization Settings
+                  <SettingsIcon className="mr-2 h-5 w-5" />
+                  Application Preferences
                 </CardTitle>
                 <CardDescription>
-                  Manage your organization details and settings
+                  Configure your application settings
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="org-name">Organization Name</Label>
-                    <Input
-                      id="org-name"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      placeholder="Enter organization name"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="org-email">Email</Label>
-                    <Input
-                      id="org-email"
-                      type="email"
-                      value={orgEmail}
-                      onChange={(e) => setOrgEmail(e.target.value)}
-                      placeholder="Enter organization email"
-                    />
-                  </div>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Default Currency</Label>
+                  <p className="text-sm text-muted-foreground">
+                    {currentOrganization?.currency || 'GH₵'} -{' '}
+                    <span
+                      className="text-blue-600 cursor-pointer hover:underline"
+                      onClick={() =>
+                        (document.querySelector(
+                          '[value="organization"]'
+                        ) as HTMLElement)?.click()
+                      }
+                    >
+                      Edit in Organization settings
+                    </span>
+                  </p>
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="org-phone">Phone</Label>
-                    <Input
-                      id="org-phone"
-                      value={orgPhone}
-                      onChange={(e) => setOrgPhone(e.target.value)}
-                      placeholder="Enter organization phone"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="org-currency">Currency</Label>
-                    <Input
-                      id="org-currency"
-                      value={orgCurrency}
-                      onChange={(e) => setOrgCurrency(e.target.value)}
-                      placeholder="Enter currency symbol"
-                    />
-                  </div>
-                </div>
-
-
 
                 <div className="space-y-2">
-                  <Label htmlFor="org-address">Address</Label>
-                  <Input
-                    id="org-address"
-                    value={orgAddress}
-                    onChange={(e) => setOrgAddress(e.target.value)}
-                    placeholder="Enter organization address"
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex justify-end space-x-4">
-                  <Button 
-                    variant="outline"
-                    onClick={() => {
-                      setOrgName(currentOrganization.name || '');
-                      setOrgEmail(currentOrganization.email || '');
-                      setOrgPhone(currentOrganization.phone || '');
-                      setOrgAddress(currentOrganization.address || '');
-                      setOrgCurrency(currentOrganization.currency || 'GH₵');
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={handleUpdateOrganization}
-                    disabled={updateOrganizationMutation.isPending}
-                  >
-                    {updateOrganizationMutation.isPending ? 'Saving...' : 'Save Changes'}
-                  </Button>
+                  <Label>Date Format</Label>
+                  <p className="text-sm text-muted-foreground">MM/DD/YYYY</p>
                 </div>
               </CardContent>
             </Card>
-          )}
-        </TabsContent>
-
-        <TabsContent value="preferences" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <SettingsIcon className="mr-2 h-5 w-5" />
-                Application Preferences
-              </CardTitle>
-              <CardDescription>
-                Configure your application settings
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Default Currency</Label>
-                <p className="text-sm text-muted-foreground">
-                  {currentOrganization?.currency || 'GH₵'} - <span className="text-blue-600 cursor-pointer hover:underline" onClick={() => (document.querySelector('[value="organization"]') as HTMLElement)?.click()}>Edit in Organization settings</span>
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Date Format</Label>
-                <p className="text-sm text-muted-foreground">MM/DD/YYYY</p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          </TabsContent>
+        </RoleGuard>
       </Tabs>
     </div>
   );
