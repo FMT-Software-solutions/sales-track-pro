@@ -245,7 +245,7 @@ export default function Expenses() {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <Table className="min-w-[700px]">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>

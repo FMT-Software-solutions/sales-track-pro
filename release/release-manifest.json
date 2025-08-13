@@ -1,5 +1,16 @@
 {
-  "releases": [],
+  "releases": [
+    {
+      "version": "1.0.0",
+      "platform": "win32",
+      "architecture": "x64",
+      "download_url": "https://your-domain.com/releases/sales-track-pro-setup-1.0.0.exe",
+      "file_size": 87957156,
+      "release_notes": "",
+      "status": "draft",
+      "created_at": "2025-08-13T19:13:19.325Z"
+    }
+  ],
   "metadata": {
     "created": "2025-01-16T00:00:00.000Z",
     "project": "SalesTrack Pro",

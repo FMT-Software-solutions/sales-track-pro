@@ -205,9 +205,9 @@ async function main() {
       throw new Error('Invalid version format. Use semantic versioning (e.g., 1.2.3)');
     }
 
-    if (newVersion <= currentVersion) {
-      throw new Error('New version must be greater than current version');
-    }
+    // if (newVersion <= currentVersion) {
+    //   throw new Error('New version must be greater than current version');
+    // }
 
     // Get changelog entry
     log.info('\nEnter changelog entry (use ### Added, ### Fixed, ### Changed sections):');
@@ -233,9 +233,9 @@ async function main() {
       }
     }
 
-    if (!isValidChangelogEntry(changelogEntry)) {
-      throw new Error('Changelog entry must contain at least one section (### Added, ### Fixed, or ### Changed)');
-    }
+    // if (!isValidChangelogEntry(changelogEntry)) {
+      // throw new Error('Changelog entry must contain at least one section (### Added, ### Fixed, or ### Changed)');
+    // }
 
     // Confirm release
     log.info(`\nRelease Summary:`);

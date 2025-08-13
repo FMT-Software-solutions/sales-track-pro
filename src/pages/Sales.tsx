@@ -218,7 +218,7 @@ export default function Sales() {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <Table className="min-w-[600px]">
+                <Table className="min-w-[800px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Date</TableHead>

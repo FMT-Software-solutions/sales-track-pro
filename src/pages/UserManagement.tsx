@@ -314,25 +314,25 @@ export default function UserManagement() {
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate that branch is selected for branch managers
     if (createForm.role === 'branch_manager' && !createForm.branchId) {
       toast.error('Please select a branch for the branch manager.');
       return;
     }
-    
+
     createUserMutation.mutate(createForm);
   };
 
   const handleEditUser = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate that branch is selected for branch managers
     if (editForm.role === 'branch_manager' && !editForm.branchId) {
       toast.error('Please select a branch for the branch manager.');
       return;
     }
-    
+
     if (editingUser) {
       updateUserMutation.mutate({
         userId: editingUser.id,
@@ -397,17 +397,20 @@ export default function UserManagement() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="container mx-auto py-8">
+      <div className="flex flex-col md:flex-row justify-between items-center mb-6">
         <div>
-          <h1 className="text-3xl font-bold">User Management</h1>
+          <h1 className="text-xl md:text-3xl font-bold">User Management</h1>
           <p className="text-muted-foreground">
             Manage users and their permissions
           </p>
         </div>
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="ml-auto mt-4 md:mt-0"
+            >
               <UserPlus className="mr-2 h-4 w-4" />
               Add User
             </Button>
@@ -516,7 +519,9 @@ export default function UserManagement() {
                 </div>
                 {createForm.role === 'branch_manager' && (
                   <div>
-                    <Label htmlFor="branch">Branch <span className="text-red-500">*</span></Label>
+                    <Label htmlFor="branch">
+                      Branch <span className="text-red-500">*</span>
+                    </Label>
                     <Select
                       value={createForm.branchId}
                       onValueChange={(value) =>
@@ -524,7 +529,9 @@ export default function UserManagement() {
                       }
                       required
                     >
-                      <SelectTrigger className={!createForm.branchId ? "border-red-300" : ""}>
+                      <SelectTrigger
+                        className={!createForm.branchId ? 'border-red-300' : ''}
+                      >
                         <SelectValue placeholder="Select a branch" />
                       </SelectTrigger>
                       <SelectContent>
@@ -569,8 +576,8 @@ export default function UserManagement() {
             <Card key={user.id}>
               <CardContent className="pt-6">
                 <div className="flex justify-between items-start">
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
                       <h3 className="font-semibold">{user.full_name}</h3>
                       <Badge
                         variant={
@@ -589,7 +596,7 @@ export default function UserManagement() {
                       </p>
                     )}
                   </div>
-                  <div className="flex space-x-2">
+                  <div className="flex flex-col md:flex-row justify-center items-baseline space-x-2 space-y-1">
                     <Button
                       variant="outline"
                       size="sm"
@@ -703,7 +710,9 @@ export default function UserManagement() {
             </div>
             {editForm.role === 'branch_manager' && (
               <div>
-                <Label htmlFor="editBranch">Branch <span className="text-red-500">*</span></Label>
+                <Label htmlFor="editBranch">
+                  Branch <span className="text-red-500">*</span>
+                </Label>
                 <Select
                   value={editForm.branchId}
                   onValueChange={(value) =>
@@ -711,7 +720,9 @@ export default function UserManagement() {
                   }
                   required
                 >
-                  <SelectTrigger className={!editForm.branchId ? "border-red-300" : ""}>
+                  <SelectTrigger
+                    className={!editForm.branchId ? 'border-red-300' : ''}
+                  >
                     <SelectValue placeholder="Select a branch" />
                   </SelectTrigger>
                   <SelectContent>

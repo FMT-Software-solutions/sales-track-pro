@@ -125,7 +125,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      devTools: !app.isPackaged, // Enable devTools only in development
+      devTools:  !app.isPackaged, // Enable devTools only in development
     },
   })
 

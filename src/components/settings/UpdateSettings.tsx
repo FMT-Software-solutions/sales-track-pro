@@ -73,7 +73,9 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
         setLastCheckResult('success');
 
         if (!silent) {
-          toast.success(`Version ${result.latestVersion.version} is now available for download.`);
+          toast.success(
+            `Version ${result.latestVersion.version} is now available for download.`
+          );
         } else {
           // Show notification for silent checks
           showUpdateNotification(result.latestVersion);
@@ -87,7 +89,9 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
         setUpdateInfo(null);
         setLastCheckResult('no-update');
         if (!silent) {
-          toast.success(`You're running the latest version (${result.currentVersion}).`);
+          toast.success(
+            `You're running the latest version (${result.currentVersion}).`
+          );
         }
       }
     } catch (error) {
@@ -101,27 +105,36 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
 
   const showUpdateNotification = (versionInfo: VersionInfo) => {
     // Create a persistent notification-like toast
-    toast.success(`🎉 Update Available - Version ${versionInfo.version} is now available.`, {
-      duration: 10000,
-      action: {
-        label: 'Download',
-        onClick: () => downloadUpdate(versionInfo),
-      },
-    });
+    toast.success(
+      `🎉 Update Available - Version ${versionInfo.version} is now available.`,
+      {
+        duration: 10000,
+        action: {
+          label: 'Download',
+          onClick: () => downloadUpdate(versionInfo),
+        },
+      }
+    );
   };
 
   const downloadUpdate = async (versionInfo: VersionInfo) => {
     if (!window.electron?.downloadUpdate) {
-      toast.error('Download functionality is not available in this environment.');
+      toast.error(
+        'Download functionality is not available in this environment.'
+      );
       return;
     }
 
     setIsDownloading(true);
     try {
-      const result = await window.electron.downloadUpdate(versionInfo.download_url);
+      const result = await window.electron.downloadUpdate(
+        versionInfo.download_url
+      );
 
       if (result.success) {
-        toast.success('The update will open in your default browser. After downloading, please restart the application to apply the update.');
+        toast.success(
+          'The update will open in your default browser. After downloading, please restart the application to apply the update.'
+        );
       } else {
         toast.error('Failed to start download. Please try again.');
       }
@@ -284,7 +297,8 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Latest Version</span>
               <span className="text-sm text-muted-foreground">
-                {updateInfo.version} ({formatReleaseDate(updateInfo.created_at)})
+                {updateInfo.version} ({formatReleaseDate(updateInfo.created_at)}
+                )
               </span>
             </div>
           )}
@@ -297,7 +311,7 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
               Automatic Updates
             </Label>
             <p className="text-xs text-muted-foreground">
-              Automatically check for updates every 4 hours
+              Automatically check for updates
             </p>
           </div>
           <Switch
@@ -331,7 +345,7 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
 
         <div className="text-xs text-gray-500">
           {autoCheckEnabled
-            ? 'Updates are automatically checked every 4 hours when the app is running.'
+            ? 'Updates are automatically checked when the app is running.'
             : 'Automatic update checking is disabled. Use the button above to check manually.'}
         </div>
       </CardContent>

@@ -124,9 +124,9 @@ export function Settings() {
         </TabsList>
 
         <TabsContent value="profile" className="space-y-6">
-          <div className="grid gap-6 lg:grid-cols-3">
+          <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
             {/* Profile Settings */}
-            <Card className="lg:col-span-2">
+            <Card className="col-span-1 lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <User className="mr-2 h-5 w-5" />
@@ -177,9 +177,9 @@ export function Settings() {
 
                 <Separator />
 
-                <div className="flex justify-between items-center">
+                <div className="flex flex-col-reverse md:flex-row md:justify-between md:items-center">
                   <ChangePassword />
-                  <div className="flex space-x-4">
+                  <div className="flex justify-between md:justify-start space-x-4 mb-8 md:mb-0">
                     <Button
                       variant="outline"
                       onClick={() => {
