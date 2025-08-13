@@ -13,7 +13,6 @@ import {
   FileText,
   Settings,
   LogOut,
-  TrendingUp,
   RefreshCw,
   Users,
 } from 'lucide-react';
@@ -63,7 +62,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="fixed inset-y-0 left-0 z-50 w-16 md:w-64 bg-white shadow-lg transition-all duration-200">
         <div className="flex h-16 items-center justify-center border-b border-gray-200 px-6">
           <div className="flex items-center space-x-2">
-            <TrendingUp className="h-8 w-8 text-blue-600" />
+            <img src="/icon.png" className="md:h-10 md:w-10" />
             <span className="hidden md:inline text-xl font-bold text-gray-900">
               SalesTrack Pro
             </span>

@@ -134,7 +134,7 @@ export default function Sales() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="record">Record Sale</TabsTrigger>
           <TabsTrigger value="entries">Sales Entries</TabsTrigger>
-          <TabsTrigger value="items">Sales Items</TabsTrigger>
+          <TabsTrigger value="items">Sale Items</TabsTrigger>
         </TabsList>
 
         <TabsContent value="record">

@@ -25,3 +25,5 @@ release/build
 *.njsproj
 *.sln
 *.sw?
+
+todo.txt

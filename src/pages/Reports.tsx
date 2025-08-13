@@ -45,7 +45,7 @@ export function Reports() {
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
 
@@ -351,7 +351,11 @@ export function Reports() {
                   }
                 >
                   <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder={selectedBranch === '' ? "Loading..." : "Select branch"} />
+                    <SelectValue
+                      placeholder={
+                        selectedBranch === '' ? 'Loading...' : 'Select branch'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {user?.profile?.role === 'admin' && (
@@ -445,9 +449,9 @@ export function Reports() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1">
               <div>
-                <CardTitle>Sales Transactions</CardTitle>
+                <CardTitle>Sales Reports</CardTitle>
                 <CardDescription>
-                  Detailed list of all sales in the selected period
+                  Generate report of all sales in the selected period
                 </CardDescription>
               </div>
               <Button variant="outline" onClick={() => exportToCSV('sales')}>
@@ -456,7 +460,7 @@ export function Reports() {
               </Button>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[400px]">
+              <ScrollArea className="h-[500px]">
                 {salesLoading ? (
                   <div className="flex justify-center py-8">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -522,9 +526,9 @@ export function Reports() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1">
               <div>
-                <CardTitle>Expense Transactions</CardTitle>
+                <CardTitle>Expenses Reports</CardTitle>
                 <CardDescription>
-                  Detailed list of all expenses in the selected period
+                  Generate report of all expenses in the selected period
                 </CardDescription>
               </div>
               <Button variant="outline" onClick={() => exportToCSV('expenses')}>
@@ -533,54 +537,56 @@ export function Reports() {
               </Button>
             </CardHeader>
             <CardContent>
-              {expensesLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                </div>
-              ) : (
-                <Table className="min-w-[600px]">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Branch</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Description</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell>
-                          {format(
-                            new Date(expense.expense_date),
-                            'MMM d, yyyy'
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {(expense as any).branches?.name || 'Unknown'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary">
-                            {(expense as any).expense_categories?.name ||
-                              expense.category ||
-                              'Unknown'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium text-red-600">
-                          {formatCurrency(
-                            expense.amount,
-                            currentOrganization?.currency
-                          )}
-                        </TableCell>
-                        <TableCell>{expense.description || '-'}</TableCell>
+              <ScrollArea className="h-[500px]">
+                {expensesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <Table className="min-w-[600px]">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Branch</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Description</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.map((expense) => (
+                        <TableRow key={expense.id}>
+                          <TableCell>
+                            {format(
+                              new Date(expense.expense_date),
+                              'MMM d, yyyy'
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {(expense as any).branches?.name || 'Unknown'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {(expense as any).expense_categories?.name ||
+                                expense.category ||
+                                'Unknown'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium text-red-600">
+                            {formatCurrency(
+                              expense.amount,
+                              currentOrganization?.currency
+                            )}
+                          </TableCell>
+                          <TableCell>{expense.description || '-'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </ScrollArea>
             </CardContent>
           </Card>
         </TabsContent>

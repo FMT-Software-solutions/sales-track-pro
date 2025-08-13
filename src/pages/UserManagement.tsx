@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useOrganization } from '../contexts/OrganizationContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -74,6 +75,7 @@ interface CreateUserForm {
 
 export default function UserManagement() {
   const { user: currentUser, profile } = useAuth();
+  const { currentOrganization } = useOrganization();
   const queryClient = useQueryClient();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -94,11 +96,28 @@ export default function UserManagement() {
   const [showPassword, setShowPassword] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
 
+  // Get current organization from context
+
   // Fetch users
   const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['users'],
+    queryKey: ['users', currentOrganization?.id],
     queryFn: async () => {
-      // First get all profiles with branches
+      if (!currentOrganization) {
+        throw new Error('User not associated with any organization');
+      }
+
+      // Get all users in the same organization
+      const { data: orgUsers, error: orgUsersError } = await supabase
+        .from('user_organizations')
+        .select('user_id')
+        .eq('organization_id', currentOrganization.id)
+        .eq('is_active', true);
+
+      if (orgUsersError) throw orgUsersError;
+
+      const userIds = orgUsers?.map((ou) => ou.user_id) || [];
+
+      // Get profiles for users in the organization
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select(
@@ -107,53 +126,36 @@ export default function UserManagement() {
           branches(name)
         `
         )
+        .in('id', userIds)
         .order('full_name');
 
       if (profilesError) throw profilesError;
 
-      // Then get user organizations for each user
-      const userIds = profilesData?.map((p) => p.id) || [];
-      const { data: userOrgsData, error: userOrgsError } = await supabase
-        .from('user_organizations')
-        .select(
-          `
-          user_id,
-          organization_id,
-          role,
-          is_active,
-          organizations(name)
-        `
-        )
-        .in('user_id', userIds)
-        .eq('is_active', true);
-
-      if (userOrgsError) throw userOrgsError;
-
       // Combine the data
-      const usersWithOrgs = profilesData?.map((profile) => ({
+      const usersProfiles = profilesData?.map((profile) => ({
         ...profile,
-        user_organizations:
-          userOrgsData?.filter((org) => org.user_id === profile.id) || [],
       }));
 
-      return usersWithOrgs as User[];
+      return usersProfiles as User[];
     },
-    enabled: profile?.role === 'admin',
+    enabled: profile?.role === 'admin' && !!currentOrganization,
   });
 
   // Fetch branches
   const { data: branches } = useQuery({
-    queryKey: ['branches'],
+    queryKey: ['branches', currentOrganization?.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('branches')
         .select('id, name')
+        .eq('organization_id', currentOrganization?.id)
+        .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
       return data as Branch[];
     },
-    enabled: profile?.role === 'admin',
+    enabled: profile?.role === 'admin' && !!currentOrganization,
   });
 
   // Create user mutation
@@ -162,13 +164,9 @@ export default function UserManagement() {
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.access_token) throw new Error('No access token');
 
-      // Get current organization
-      const { data: userOrg } = await supabase
-        .from('user_organizations')
-        .select('organization_id')
-        .eq('user_id', currentUser?.id)
-        .eq('is_active', true)
-        .single();
+      if (!currentOrganization) {
+        throw new Error('User not associated with any organization');
+      }
 
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
@@ -183,7 +181,7 @@ export default function UserManagement() {
             fullName: userData.fullName,
             role: userData.role,
             branchId: userData.branchId,
-            organizationId: userOrg?.organization_id,
+            organizationId: currentOrganization.id,
           }),
         }
       );
@@ -316,11 +314,25 @@ export default function UserManagement() {
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate that branch is selected for branch managers
+    if (createForm.role === 'branch_manager' && !createForm.branchId) {
+      toast.error('Please select a branch for the branch manager.');
+      return;
+    }
+    
     createUserMutation.mutate(createForm);
   };
 
   const handleEditUser = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate that branch is selected for branch managers
+    if (editForm.role === 'branch_manager' && !editForm.branchId) {
+      toast.error('Please select a branch for the branch manager.');
+      return;
+    }
+    
     if (editingUser) {
       updateUserMutation.mutate({
         userId: editingUser.id,
@@ -504,14 +516,15 @@ export default function UserManagement() {
                 </div>
                 {createForm.role === 'branch_manager' && (
                   <div>
-                    <Label htmlFor="branch">Branch</Label>
+                    <Label htmlFor="branch">Branch <span className="text-red-500">*</span></Label>
                     <Select
                       value={createForm.branchId}
                       onValueChange={(value) =>
                         setCreateForm({ ...createForm, branchId: value })
                       }
+                      required
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className={!createForm.branchId ? "border-red-300" : ""}>
                         <SelectValue placeholder="Select a branch" />
                       </SelectTrigger>
                       <SelectContent>
@@ -575,13 +588,6 @@ export default function UserManagement() {
                         Branch: {user.branches.name}
                       </p>
                     )}
-                    {user.user_organizations &&
-                      user.user_organizations.length > 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          Organization:{' '}
-                          {user.user_organizations[0].organizations.name}
-                        </p>
-                      )}
                   </div>
                   <div className="flex space-x-2">
                     <Button
@@ -697,14 +703,15 @@ export default function UserManagement() {
             </div>
             {editForm.role === 'branch_manager' && (
               <div>
-                <Label htmlFor="editBranch">Branch</Label>
+                <Label htmlFor="editBranch">Branch <span className="text-red-500">*</span></Label>
                 <Select
                   value={editForm.branchId}
                   onValueChange={(value) =>
                     setEditForm({ ...editForm, branchId: value })
                   }
+                  required
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={!editForm.branchId ? "border-red-300" : ""}>
                     <SelectValue placeholder="Select a branch" />
                   </SelectTrigger>
                   <SelectContent>

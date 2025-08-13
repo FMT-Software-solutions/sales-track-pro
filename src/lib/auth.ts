@@ -1,11 +1,22 @@
 import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
+export interface UserOrganization {
+  organization_id: string;
+  role: string;
+  is_active: boolean;
+  organizations: {
+    id: string;
+    name: string;
+  };
+}
+
 export interface AuthUser extends User {
   profile?: {
     full_name: string;
     role: 'admin' | 'branch_manager';
     branch_id: string | null;
+    user_organizations?: UserOrganization[];
   };
 }
 

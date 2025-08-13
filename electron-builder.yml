@@ -4,7 +4,7 @@ copyright: Copyright © 2025 FMT Software Solutions
 
 artifactName: sales-track-pro-setup-${version}.${ext}
 directories:
-  output: dist
+  output: release/build
 files:
   - dist/**/*
   - electron-app/dist/**/*

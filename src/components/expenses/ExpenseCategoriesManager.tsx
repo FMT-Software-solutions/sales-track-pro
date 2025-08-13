@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useExpenseCategories, useDeleteExpenseCategory, ExpenseCategory } from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import {
   Card,
   CardContent,
@@ -41,7 +42,8 @@ import { Edit, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function ExpenseCategoriesManager() {
-  const { data: categories = [] } = useExpenseCategories();
+  const { currentOrganization } = useOrganization();
+  const { data: categories = [] } = useExpenseCategories(currentOrganization?.id);
   const deleteCategory = useDeleteExpenseCategory();
   const { searchValue, debouncedSearchValue, setSearchValue } = useDebouncedSearch('', 500);
   const [editCategory, setEditCategory] = useState<ExpenseCategory | null>(null);

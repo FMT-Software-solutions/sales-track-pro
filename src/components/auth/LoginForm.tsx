@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/card';
 import { AuthUser, getCurrentUser, signIn } from '@/lib/auth';
 import { toast } from 'sonner';
-import { TrendingUp, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -57,7 +57,7 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <div className="flex items-center space-x-2">
-              <TrendingUp className="h-10 w-10 text-blue-600" />
+              <img src="/icon.png" className="h-10 w-10" />
               <span className="text-2xl font-bold text-gray-900">
                 SalesTrack Pro
               </span>
@@ -97,7 +97,11 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
                   className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
               {errors.password && (
@@ -112,15 +116,6 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-gray-600">
-            <p>Demo Credentials:</p>
-            <p className="text-xs mt-1">
-              Admin: admin@foodtrack.com / password123
-              <br />
-              Manager: manager@foodtrack.com / password123
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

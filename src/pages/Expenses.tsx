@@ -46,7 +46,7 @@ import type { Expense } from '@/hooks/queries';
 export default function Expenses() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const [selectedBranch, setSelectedBranch] = useState<string>('');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
 

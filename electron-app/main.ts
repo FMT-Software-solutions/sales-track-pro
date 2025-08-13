@@ -68,39 +68,26 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 // Update system IPC handlers
 ipcMain.handle('check-for-updates', async () => {
   try {
-    const response = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/app_versions?status=eq.published&platform=eq.${process.platform}&select=*&order=created_at.desc&limit=1`, {
+    const currentVersion = app.getVersion();
+    const response = await fetch(`https://srssvwepphmoyeworrrl.supabase.co/functions/v1/check-updates`, {
+      method: 'POST',
       headers: {
         'apikey': process.env.VITE_SUPABASE_ANON_KEY || '',
         'Authorization': `Bearer ${process.env.VITE_SUPABASE_ANON_KEY || ''}`,
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({
+        platform: process.platform,
+        currentVersion: currentVersion
+      })
     });
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const versions = await response.json() as any[];
-    const currentVersion = app.getVersion();
-    
-    if (Array.isArray(versions) && versions.length > 0) {
-      const latestVersion = versions[0];
-      const isNewer = compareVersions(latestVersion.version, currentVersion) > 0;
-      
-      return {
-        success: true,
-        hasUpdate: isNewer,
-        currentVersion,
-        latestVersion: isNewer ? latestVersion : null
-      };
-    }
-
-    return {
-      success: true,
-      hasUpdate: false,
-      currentVersion,
-      latestVersion: null
-    };
+    const result = await response.json();
+    return result;
   } catch (error) {
     console.error('Update check failed:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -123,25 +110,7 @@ ipcMain.handle('download-update', async (_: any, downloadUrl: string) => {
   }
 });
 
-// Helper function to compare semantic versions
-function compareVersions(a: string, b: string): number {
-  const parseVersion = (version: string) => {
-    return version.replace(/^v/, '').split('.').map(num => parseInt(num, 10));
-  };
-  
-  const versionA = parseVersion(a);
-  const versionB = parseVersion(b);
-  
-  for (let i = 0; i < Math.max(versionA.length, versionB.length); i++) {
-    const numA = versionA[i] || 0;
-    const numB = versionB[i] || 0;
-    
-    if (numA > numB) return 1;
-    if (numA < numB) return -1;
-  }
-  
-  return 0;
-}
+
 
 function createWindow() {
   // Determine icon path based on platform

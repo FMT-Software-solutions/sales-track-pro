@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  useCreateSalesItem,
+  useCreateProduct,
   useUpdateSalesItem,
   SalesItem,
 } from '@/hooks/queries';
@@ -31,7 +31,7 @@ interface SalesItemFormProps {
 export function SalesItemForm({ onSuccess, salesItem }: SalesItemFormProps) {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const createSalesItem = useCreateSalesItem();
+  const createProduct = useCreateProduct();
   const updateSalesItem = useUpdateSalesItem();
 
   const {
@@ -71,7 +71,7 @@ export function SalesItemForm({ onSuccess, salesItem }: SalesItemFormProps) {
         await updateSalesItem.mutateAsync({ id: salesItem.id, ...data });
         toast.success('Sales item updated successfully');
       } else {
-        await createSalesItem.mutateAsync({
+        await createProduct.mutateAsync({
           ...data,
           price: Number(data.price),
           created_by: user.id,
@@ -97,7 +97,9 @@ export function SalesItemForm({ onSuccess, salesItem }: SalesItemFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="price">Price ({currentOrganization?.currency || 'GH₵'})</Label>
+        <Label htmlFor="price">
+          Price ({currentOrganization?.currency || 'GH₵'})
+        </Label>
         <Input
           id="price"
           type="number"
@@ -126,9 +128,9 @@ export function SalesItemForm({ onSuccess, salesItem }: SalesItemFormProps) {
         </Button>
         <Button
           type="submit"
-          disabled={createSalesItem.isPending || updateSalesItem.isPending}
+          disabled={createProduct.isPending || updateSalesItem.isPending}
         >
-          {createSalesItem.isPending || updateSalesItem.isPending
+          {createProduct.isPending || updateSalesItem.isPending
             ? 'Saving...'
             : salesItem
             ? 'Update Item'

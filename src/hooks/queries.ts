@@ -242,6 +242,7 @@ export function useExpenseCategories(organizationId?: string) {
       let query = supabase
         .from('expense_categories')
         .select('*')
+        .eq('organization_id', organizationId)
         .eq('is_active', true)
         .order('name', { ascending: true });
 
@@ -254,6 +255,7 @@ export function useExpenseCategories(organizationId?: string) {
       if (error) throw error;
       return data as ExpenseCategory[];
     },
+    enabled: !!organizationId,
   });
 }
 
@@ -329,6 +331,7 @@ export function useProducts(organizationId?: string) {
       let query = supabase
         .from('products')
         .select('*')
+        .eq('organization_id', organizationId)
         .eq('is_active', true)
         .order('name', { ascending: true });
 
@@ -341,6 +344,7 @@ export function useProducts(organizationId?: string) {
       if (error) throw error;
       return data as Product[];
     },
+    enabled: !!organizationId,
   });
 }
 
@@ -368,9 +372,6 @@ export function useCreateProduct() {
     },
   });
 }
-
-// Keep old hook for backward compatibility during transition
-export const useCreateSalesItem = useCreateProduct;
 
 export function useUpdateProduct() {
   const queryClient = useQueryClient();

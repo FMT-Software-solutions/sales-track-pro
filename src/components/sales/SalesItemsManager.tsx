@@ -42,9 +42,9 @@ import { Edit, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function SalesItemsManager() {
-  const { data: salesItems = [] } = useSalesItems();
-  const deleteSalesItem = useDeleteSalesItem();
   const { currentOrganization } = useOrganization();
+  const { data: salesItems = [] } = useSalesItems(currentOrganization?.id);
+  const deleteSalesItem = useDeleteSalesItem();
   const { searchValue, debouncedSearchValue, setSearchValue } = useDebouncedSearch('', 500);
   const [editItem, setEditItem] = useState<SalesItem | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);

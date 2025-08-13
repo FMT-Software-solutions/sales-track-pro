@@ -1,5 +1,21 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+} from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -47,13 +63,18 @@ export function SalesChart({ data, period }: SalesChartProps) {
                 />
                 <YAxis
                   stroke="#888888"
-                  fontSize={12}
+                  fontSize={10}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) => formatCurrency(value, currentOrganization?.currency)}
+                  tickFormatter={(value) =>
+                    formatCurrency(value, currentOrganization?.currency)
+                  }
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value, currentOrganization?.currency), '']}
+                  formatter={(value: number, name: string) => [
+                    formatCurrency(value, currentOrganization?.currency),
+                    name,
+                  ]}
                   labelStyle={{ color: '#000' }}
                 />
                 <Bar dataKey="sales" fill="#3b82f6" name="Sales" />
@@ -70,19 +91,24 @@ export function SalesChart({ data, period }: SalesChartProps) {
                 <XAxis
                   dataKey="name"
                   stroke="#888888"
-                  fontSize={12}
+                  fontSize={1}
                   tickLine={false}
                   axisLine={false}
                 />
                 <YAxis
                   stroke="#888888"
-                  fontSize={12}
+                  fontSize={10}
                   tickLine={false}
                   axisLine={false}
-                  tickFormatter={(value) => formatCurrency(value, currentOrganization?.currency)}
+                  tickFormatter={(value) =>
+                    formatCurrency(value, currentOrganization?.currency)
+                  }
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value, currentOrganization?.currency), '']}
+                  formatter={(value: number, name: string) => [
+                    formatCurrency(value, currentOrganization?.currency),
+                    name,
+                  ]}
                   labelStyle={{ color: '#000' }}
                 />
                 <Line

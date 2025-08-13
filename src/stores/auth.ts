@@ -31,20 +31,45 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       if (session?.user) {
-        const { data: profile, error } = await supabase
+        // Fetch profile
+        const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
 
-        if (error) {
-          console.error('Profile fetch error:', error);
+        if (profileError) {
+          console.error('Profile fetch error:', profileError);
         }
+
+        // Fetch user organizations separately
+        const { data: userOrganizations, error: orgError } = await supabase
+          .from('user_organizations')
+          .select(`
+            organization_id,
+            role,
+            is_active,
+            organizations(
+              id,
+              name
+            )
+          `)
+          .eq('user_id', session.user.id);
+
+        if (orgError) {
+          console.error('User organizations fetch error:', orgError);
+        }
+
+        // Merge profile with user organizations
+        const profileWithOrgs = profile ? {
+          ...profile,
+          user_organizations: userOrganizations || []
+        } : undefined;
 
         set({
           user: {
             ...session.user,
-            profile: profile || undefined,
+            profile: profileWithOrgs,
           },
           loading: false,
         });
