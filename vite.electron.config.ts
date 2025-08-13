@@ -13,7 +13,8 @@ export default defineConfig({
         // Main-Process entry file of the Electron App.
         entry: 'electron-app/main.ts',
         onstart(args) {
-          // Start the Electron App only once to prevent multiple windows
+          // Notify the Renderer-Process to reload the page when the Main-Process build is complete, 
+          // instead of restarting the entire Electron App.
           args.reload()
         },
         vite: {
@@ -30,7 +31,8 @@ export default defineConfig({
       {
         entry: 'electron-app/preload.ts',
         onstart(args) {
-          // Reload the renderer process when preload scripts change
+          // Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete, 
+          // instead of restarting the entire Electron App.
           args.reload()
         },
         vite: {

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, net } = require('electron')
+const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -8,7 +8,7 @@ function loadEnvFile() {
   // In production, VITE_ variables are baked into the build by Vite
   if (!app.isPackaged) {
     try {
-      const envPath = path.join(__dirname, '../.env.local')
+      const envPath = path.join(__dirname, '../../.env.local')
       console.log('🔧 DEVELOPMENT MODE: Loading environment variables from:', envPath)
       
       if (fs.existsSync(envPath)) {
@@ -40,7 +40,7 @@ function loadEnvFile() {
 //
 // ├─┬─┬ dist
 // │ │ └── index.html
-//
+// │
 // ├─┬ electron-app/dist
 // │ ├── main.js
 // │ └── preload.js
@@ -49,7 +49,7 @@ const DIST_PATH = app.isPackaged
   ? path.join(__dirname, '../dist')
   : path.join(__dirname, '../../dist')
 const PUBLIC_PATH = app.isPackaged 
-  ? path.join((process as any).resourcesPath, 'app', 'public')
+  ? path.join((process as any).resourcesPath , 'app', 'public')
   : path.join(__dirname, '../../public')
 
 // Set environment variables
@@ -64,6 +64,85 @@ let win: any = null
 // 🚧 Use ['ENV_NAME'] avoid vite:define plugin
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 
+
+// Update system IPC handlers
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const response = await fetch(`${process.env.VITE_SUPABASE_URL}/rest/v1/app_versions?status=eq.published&platform=eq.${process.platform}&select=*&order=created_at.desc&limit=1`, {
+      headers: {
+        'apikey': process.env.VITE_SUPABASE_ANON_KEY || '',
+        'Authorization': `Bearer ${process.env.VITE_SUPABASE_ANON_KEY || ''}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const versions = await response.json() as any[];
+    const currentVersion = app.getVersion();
+    
+    if (Array.isArray(versions) && versions.length > 0) {
+      const latestVersion = versions[0];
+      const isNewer = compareVersions(latestVersion.version, currentVersion) > 0;
+      
+      return {
+        success: true,
+        hasUpdate: isNewer,
+        currentVersion,
+        latestVersion: isNewer ? latestVersion : null
+      };
+    }
+
+    return {
+      success: true,
+      hasUpdate: false,
+      currentVersion,
+      latestVersion: null
+    };
+  } catch (error) {
+    console.error('Update check failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return { success: false, error: errorMessage };
+  }
+});
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('download-update', async (_: any, downloadUrl: string) => {
+  try {
+    await shell.openExternal(downloadUrl);
+    return { success: true };
+  } catch (error) {
+    console.error('Download failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return { success: false, error: errorMessage };
+  }
+});
+
+// Helper function to compare semantic versions
+function compareVersions(a: string, b: string): number {
+  const parseVersion = (version: string) => {
+    return version.replace(/^v/, '').split('.').map(num => parseInt(num, 10));
+  };
+  
+  const versionA = parseVersion(a);
+  const versionB = parseVersion(b);
+  
+  for (let i = 0; i < Math.max(versionA.length, versionB.length); i++) {
+    const numA = versionA[i] || 0;
+    const numB = versionB[i] || 0;
+    
+    if (numA > numB) return 1;
+    if (numA < numB) return -1;
+  }
+  
+  return 0;
+}
+
 function createWindow() {
   // Determine icon path based on platform
   const iconPath = path.join(app.isPackaged ? PUBLIC_PATH : path.join(__dirname, '../../public'), 
@@ -77,7 +156,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js'),
-      devTools: true, // Enable DevTools for debugging packaged app
+      devTools: !app.isPackaged, // Enable devTools only in development
     },
   })
 
@@ -85,8 +164,8 @@ function createWindow() {
   win.setMenuBarVisibility(false)
   win.setMenu(null)
 
-  // Open DevTools for debugging
-  win.webContents.openDevTools()
+  // Open DevTools in detached mode for debugging
+  // win?.webContents.openDevTools({mode: "detach"})
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -120,9 +199,6 @@ function createWindow() {
   }
 }
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   win = null
   if (process.platform !== 'darwin') {
@@ -141,123 +217,3 @@ app.on('activate', () => {
     createWindow()
   }
 })
-
-// IPC handlers for update functionality
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
-});
-
-ipcMain.handle('check-for-updates', async () => {
-  try {
-    const url = `${process.env.VITE_SUPABASE_URL}/rest/v1/app_versions?status=eq.published&platform=eq.${process.platform}&select=*&order=created_at.desc&limit=1`;
-    
-    const response = await new Promise<any>((resolve, reject) => {
-      const request = net.request({
-        method: 'GET',
-        url: url
-      });
-
-      request.setHeader('apikey', process.env.VITE_SUPABASE_ANON_KEY || '');
-      request.setHeader('Authorization', `Bearer ${process.env.VITE_SUPABASE_ANON_KEY || ''}`);
-      request.setHeader('Content-Type', 'application/json');
-
-      let responseData = '';
-
-      request.on('response', (response: any) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`HTTP error! status: ${response.statusCode}`));
-          return;
-        }
-
-        response.on('data', (chunk: any) => {
-          responseData += chunk.toString();
-        });
-
-        response.on('end', () => {
-          try {
-            const parsedData = JSON.parse(responseData);
-            resolve(parsedData);
-          } catch (error) {
-            reject(new Error('Failed to parse response JSON'));
-          }
-        });
-      });
-
-      request.on('error', (error: any) => {
-        reject(error);
-      });
-
-      request.end();
-    });
-
-    const versions = response as any[];
-    const currentVersion = app.getVersion();
-    
-    if (Array.isArray(versions) && versions.length > 0) {
-      const latestVersion = versions[0];
-      const isNewer = compareVersions(latestVersion.version, currentVersion) > 0;
-      
-      return {
-        success: true,
-        hasUpdate: isNewer,
-        currentVersion,
-        latestVersion: isNewer ? latestVersion : null
-      };
-    }
-
-    return {
-      success: true,
-      hasUpdate: false,
-      currentVersion,
-      latestVersion: null
-    };
-  } catch (error) {
-    console.error('Update check failed:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    return { success: false, error: errorMessage };
-  }
-});
-
-ipcMain.handle('download-update', async (_: any, downloadUrl: string) => {
-  try {
-    // Open the download URL in the default browser
-    await shell.openExternal(downloadUrl);
-    return {
-      success: true,
-      error: null
-    };
-  } catch (error) {
-    console.error('Error opening download URL:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to open download URL'
-    };
-  }
-});
-
-// Helper function to compare semantic versions
-function compareVersions(version1: string, version2: string): number {
-  const v1parts = version1.split('.').map(Number);
-  const v2parts = version2.split('.').map(Number);
-  
-  for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
-    const v1part = v1parts[i] || 0;
-    const v2part = v2parts[i] || 0;
-    
-    if (v1part > v2part) return 1;
-    if (v1part < v2part) return -1;
-  }
-  
-  return 0;
-}
-
-// Handle app protocol for deep linking (optional)
-if ((process as any).defaultApp) {
-  if (process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient('salestrack-pro', process.execPath, [
-      path.join(__dirname, '../'),
-    ]);
-  }
-} else {
-  app.setAsDefaultProtocolClient('salestrack-pro');
-}
