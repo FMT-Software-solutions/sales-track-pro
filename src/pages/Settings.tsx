@@ -19,6 +19,7 @@ import { useUpdateOrganization, useUpdateProfile } from '@/hooks/queries';
 import { RoleGuard } from '@/components/auth/RoleGuard';
 import { ChangePassword } from '@/components/auth/ChangePassword';
 import { toast } from 'sonner';
+import { UpdateSettings } from '@/components/settings/UpdateSettings';
 import {
   Settings as SettingsIcon,
   User,
@@ -371,6 +372,9 @@ export function Settings() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Software Updates */}
+            <UpdateSettings />
           </TabsContent>
         </RoleGuard>
       </Tabs>

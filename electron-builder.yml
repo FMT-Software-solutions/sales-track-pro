@@ -1,0 +1,63 @@
+appId: com.fmtsoftware.salestrackpro
+productName: SalesTrack Pro
+copyright: Copyright © 2025 FMT Software Solutions
+
+artifactName: sales-track-pro-setup-${version}.${ext}
+
+directories:
+  output: release/build
+
+files:
+  - dist/**/*
+  - electron-app/dist/**/*
+  - node_modules/**/*
+  - package.json
+
+extraResources:
+  - from: assets
+    to: assets
+    filter:
+      - '**/*'
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: release/assets/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  installerIcon: release/assets/icon.ico
+  uninstallerIcon: release/assets/icon.ico
+  installerHeaderIcon: release/assets/icon.ico
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: Sales Track Pro
+  runAfterFinish: true
+  menuCategory: 'Sales Track Pro'
+
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: release/assets/icon.png
+  category: public.app-category.business
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  icon: release/assets/icon.png
+  category: Office
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+publish:
+  provider: generic
+  url: https://your-domain.com/releases/
