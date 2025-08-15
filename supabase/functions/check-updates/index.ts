@@ -22,6 +22,8 @@ serve(async (req) => {
     // Get request body
     const { platform, currentVersion } = await req.json()
 
+    console.log('Received platform:', platform, 'currentVersion:', currentVersion)
+
     if (!platform) {
       return new Response(
         JSON.stringify({ success: false, error: 'Platform is required' }),
@@ -32,14 +34,45 @@ serve(async (req) => {
       )
     }
 
-    // Query for the latest published version for the platform
-    const { data: versions, error } = await supabaseClient
+    // First try to get the version marked as latest
+    console.log('Querying for platform:', platform)
+    let { data: latestVersionData, error } = await supabaseClient
       .from('app_versions')
-      .select('*')
-      .eq('status', 'published')
+      .select('id, version, download_url, release_notes, platform, file_size, created_at, updated_at, published_at, status')
       .eq('platform', platform)
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .eq('status', 'published')
+      .eq('is_latest', true)
+      .single()
+    
+    console.log('Query result - data:', latestVersionData, 'error:', error)
+
+    // If no version is marked as latest, fall back to most recent published version
+    if (error && error.code === 'PGRST116') {
+      console.log('Falling back to created_at ordering')
+      const { data: versions, error: fallbackError } = await supabaseClient
+        .from('app_versions')
+        .select('id, version, download_url, release_notes, platform, file_size, created_at, updated_at, published_at, status')
+        .eq('platform', platform)
+        .eq('status', 'published')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      console.log('Fallback query result - data:', versions, 'error:', fallbackError)
+      
+      if (fallbackError) {
+        console.error('Fallback database error:', fallbackError)
+        return new Response(
+          JSON.stringify({ success: false, error: 'Failed to fetch versions' }),
+          {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          }
+        )
+      }
+      
+      latestVersionData = versions && versions.length > 0 ? versions[0] : null
+      error = null
+    }
 
     if (error) {
       console.error('Database error:', error)
@@ -72,16 +105,15 @@ serve(async (req) => {
       return 0
     }
 
-    if (Array.isArray(versions) && versions.length > 0) {
-      const latestVersion = versions[0]
-      const isNewer = currentVersion ? compareVersions(latestVersion.version, currentVersion) > 0 : true
+    if (latestVersionData) {
+      const isNewer = currentVersion ? compareVersions(latestVersionData.version, currentVersion) > 0 : true
       
       return new Response(
         JSON.stringify({
           success: true,
           hasUpdate: isNewer,
           currentVersion: currentVersion || 'unknown',
-          latestVersion: isNewer ? latestVersion : null
+          latestVersion: isNewer ? latestVersionData : null
         }),
         {
           status: 200,

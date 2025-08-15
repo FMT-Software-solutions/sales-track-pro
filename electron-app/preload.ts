@@ -15,6 +15,9 @@ let electronAPI: any = {
     once: (channel: string, func: (...args: any[]) => void) => {
       ipcRenderer.once(channel, (_: any, ...args: any[]) => func(...args));
     },
+    off: (channel: string, func: (...args: any[]) => void) => {
+      ipcRenderer.removeListener(channel, func);
+    },
     removeListener: (channel: string, func: (...args: any[]) => void) => {
       ipcRenderer.removeListener(channel, func);
     }
@@ -22,7 +25,12 @@ let electronAPI: any = {
   // Update system API
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-  downloadUpdate: (downloadUrl: string) => ipcRenderer.invoke('download-update', downloadUrl)
+  downloadUpdate: (downloadUrl: string) => ipcRenderer.invoke('download-update', downloadUrl),
+  // Auto-update API
+  downloadUpdateToTemp: (downloadUrl: string, fileName: string) => ipcRenderer.invoke('download-update-to-temp', downloadUrl, fileName),
+  getDownloadProgress: () => ipcRenderer.invoke('get-download-progress'),
+  installAndRestart: (downloadPath: string) => ipcRenderer.invoke('install-and-restart', downloadPath),
+  cancelDownload: () => ipcRenderer.invoke('cancel-download')
 }
 
 if (isDev) {

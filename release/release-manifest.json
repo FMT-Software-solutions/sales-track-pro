@@ -1,14 +1,28 @@
 {
   "releases": [
     {
+      "version": "1.0.1",
+      "platform": "win32",
+      "architecture": "x64",
+      "download_url": "https://github.com/FMT-Software-solutions/fmt-releases-101/releases/download/stp-v1.0.0/sales-track-pro-setup-1.0.0.exe",
+      "file_size": 90000000,
+      "release_notes": "Bug fixes and improvements",
+      "status": "published",
+      "created_at": "2025-08-15T15:39:11.101Z",
+      "updated_at": "2025-08-15T15:39:16.986Z",
+      "published_at": "2025-08-15T15:39:16.987Z"
+    },
+    {
       "version": "1.0.0",
       "platform": "win32",
       "architecture": "x64",
-      "download_url": "https://your-domain.com/releases/sales-track-pro-setup-1.0.0.exe",
+      "download_url": "https://github.com/FMT-Software-solutions/fmt-releases-101/releases/download/stp-v1.0.0/sales-track-pro-setup-1.0.0.exe",
       "file_size": 87957156,
       "release_notes": "",
-      "status": "draft",
-      "created_at": "2025-08-13T19:13:19.325Z"
+      "status": "published",
+      "created_at": "2025-08-13T19:13:19.325Z",
+      "updated_at": "2025-08-15T15:20:29.315Z",
+      "published_at": "2025-08-15T15:20:29.315Z"
     }
   ],
   "metadata": {

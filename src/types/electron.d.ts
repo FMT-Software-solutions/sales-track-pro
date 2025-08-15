@@ -26,18 +26,42 @@ export interface DownloadResult {
   error?: string;
 }
 
+export interface DownloadProgress {
+  percent: number;
+  bytesReceived: number;
+  totalBytes: number;
+  speed: number; // bytes per second
+}
+
+export interface AutoUpdateResult {
+  success: boolean;
+  error?: string;
+  downloadPath?: string;
+}
+
+export interface InstallResult {
+  success: boolean;
+  error?: string;
+}
+
 declare global {
   interface Window {
     electron?: {
       getAppVersion: () => Promise<string>;
       checkForUpdates: () => Promise<UpdateCheckResult>;
       downloadUpdate: (downloadUrl: string) => Promise<DownloadResult>;
-    };
-    ipcRenderer?: {
-      on: (channel: string, listener: (event: any, ...args: any[]) => void) => void;
-      off: (channel: string, listener?: (...args: any[]) => void) => void;
-      send: (channel: string, ...args: any[]) => void;
-      invoke: (channel: string, ...args: any[]) => Promise<any>;
+      // Auto-update methods
+      downloadUpdateToTemp: (downloadUrl: string, fileName: string) => Promise<AutoUpdateResult>;
+      getDownloadProgress: () => Promise<DownloadProgress | null>;
+      installAndRestart: (downloadPath: string) => Promise<InstallResult>;
+      cancelDownload: () => Promise<{ success: boolean }>;
+      ipcRenderer: {
+        on: (channel: string, listener: (...args: any[]) => void) => void;
+        off: (channel: string, listener: (...args: any[]) => void) => void;
+        once: (channel: string, listener: (...args: any[]) => void) => void;
+        send: (channel: string, ...args: any[]) => void;
+        removeListener: (channel: string, listener: (...args: any[]) => void) => void;
+      };
     };
   }
 }

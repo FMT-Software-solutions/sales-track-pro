@@ -15,7 +15,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import { VersionInfo, UpdateCheckResult } from '@/types/electron';
+import {
+  VersionInfo,
+  UpdateCheckResult,
+  DownloadProgress,
+  AutoUpdateResult,
+} from '@/types/electron';
 
 interface UpdateSettingsProps {
   className?: string;
@@ -31,6 +36,16 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
   const [lastCheckResult, setLastCheckResult] = useState<
     'success' | 'error' | 'no-update' | null
   >(null);
+  // Auto-update state
+  const [
+    downloadProgress,
+    setDownloadProgress,
+  ] = useState<DownloadProgress | null>(null);
+  const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(
+    null
+  );
+  const [isReadyToInstall, setIsReadyToInstall] = useState(false);
+  const [isInstalling, setIsInstalling] = useState(false);
 
   useEffect(() => {
     // Get current app version
@@ -54,6 +69,27 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
 
     return () => clearInterval(interval);
   }, [autoCheckEnabled]);
+
+  // Listen for download progress events
+  useEffect(() => {
+    if (window.electron?.ipcRenderer) {
+      const handleDownloadProgress = (progress: DownloadProgress) => {
+        setDownloadProgress(progress);
+      };
+
+      window.electron.ipcRenderer.on(
+        'download-progress',
+        handleDownloadProgress
+      );
+
+      return () => {
+        window.electron?.ipcRenderer?.off(
+          'download-progress',
+          handleDownloadProgress
+        );
+      };
+    }
+  }, []);
 
   const checkForUpdates = async (silent = false) => {
     if (!window.electron?.checkForUpdates) {
@@ -118,43 +154,109 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
   };
 
   const downloadUpdate = async (versionInfo: VersionInfo) => {
-    if (!window.electron?.downloadUpdate) {
+    if (!window.electron?.downloadUpdateToTemp) {
       toast.error(
-        'Download functionality is not available in this environment.'
+        'Auto-update functionality is not available in this environment.'
       );
       return;
     }
 
     setIsDownloading(true);
+    setDownloadProgress(null);
+    setIsReadyToInstall(false);
+
     try {
-      const result = await window.electron.downloadUpdate(
-        versionInfo.download_url
+      // Extract filename from URL or use version info
+      const url = new URL(versionInfo.download_url);
+      const fileName =
+        url.pathname.split('/').pop() ||
+        `SalesTrack-${versionInfo.version}-Setup.exe`;
+
+      toast.info('Starting download in the background...');
+
+      const result: AutoUpdateResult = await window.electron.downloadUpdateToTemp(
+        versionInfo.download_url,
+        fileName
       );
 
-      if (result.success) {
+      if (result.success && result.downloadPath) {
+        setDownloadedFilePath(result.downloadPath);
+        setIsReadyToInstall(true);
         toast.success(
-          'The update will open in your default browser. After downloading, please restart the application to apply the update.'
+          'Update downloaded successfully! Click "Restart to Update" to install.',
+          {
+            duration: 10000,
+            action: {
+              label: 'Restart Now',
+              onClick: () => installAndRestart(result.downloadPath!),
+            },
+          }
         );
       } else {
-        toast.error('Failed to start download. Please try again.');
+        toast.error(`Download failed: ${result.error || 'Unknown error'}`);
       }
     } catch (error) {
-      toast.error('An error occurred while starting the download.');
+      console.error('Download error:', error);
+      toast.error('An error occurred while downloading the update.');
     } finally {
       setIsDownloading(false);
+      setDownloadProgress(null);
     }
+  };
+
+  const installAndRestart = async (filePath: string) => {
+    if (!window.electron?.installAndRestart) {
+      toast.error('Install functionality is not available.');
+      return;
+    }
+
+    setIsInstalling(true);
+
+    try {
+      const result = await window.electron.installAndRestart(filePath);
+
+      if (result.success) {
+        toast.success('Installing update and restarting...');
+        // The app will quit automatically
+      } else {
+        toast.error(`Installation failed: ${result.error || 'Unknown error'}`);
+        setIsInstalling(false);
+      }
+    } catch (error) {
+      console.error('Install error:', error);
+      toast.error('An error occurred while installing the update.');
+      setIsInstalling(false);
+    }
+  };
+
+  const cancelDownload = async () => {
+    if (!window.electron?.cancelDownload) {
+      return;
+    }
+
+    try {
+      await window.electron.cancelDownload();
+      setIsDownloading(false);
+      setDownloadProgress(null);
+      setDownloadedFilePath(null);
+      setIsReadyToInstall(false);
+      toast.info('Download cancelled.');
+    } catch (error) {
+      console.error('Cancel download error:', error);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   const formatLastChecked = () => {
     if (!lastChecked) return 'Never';
     return lastChecked.toLocaleString();
-  };
-
-  const formatFileSize = (bytes: number) => {
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    if (bytes === 0) return '0 Bytes';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round((bytes / Math.pow(1024, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
   const formatReleaseDate = (dateString: string) => {
@@ -198,35 +300,94 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
                   </div>
                 )}
 
+                {/* Download Progress */}
+                {downloadProgress && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Downloading update...</span>
+                      <span>{Math.round(downloadProgress.percent)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${downloadProgress.percent}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>
+                        {formatFileSize(downloadProgress.bytesReceived)} /{' '}
+                        {formatFileSize(downloadProgress.totalBytes)}
+                      </span>
+                      <span>{formatFileSize(downloadProgress.speed)}/s</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center space-x-2">
-                  <Button
-                    onClick={() => downloadUpdate(updateInfo)}
-                    disabled={isDownloading}
-                    size="sm"
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    {isDownloading ? (
-                      <>
-                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        Starting Download...
-                      </>
-                    ) : (
-                      <>
-                        <Download className="mr-2 h-4 w-4" />
-                        Download Update
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={() =>
-                      window.open(updateInfo.download_url, '_blank')
-                    }
-                    variant="outline"
-                    size="sm"
-                  >
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Open in Browser
-                  </Button>
+                  {isReadyToInstall ? (
+                    <Button
+                      onClick={() => installAndRestart(downloadedFilePath!)}
+                      disabled={isInstalling}
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {isInstalling ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Installing...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Restart to Update
+                        </>
+                      )}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => downloadUpdate(updateInfo)}
+                      disabled={isDownloading || downloadProgress !== null}
+                      size="sm"
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {isDownloading || downloadProgress ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          {downloadProgress
+                            ? 'Downloading...'
+                            : 'Starting Download...'}
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Update
+                        </>
+                      )}
+                    </Button>
+                  )}
+
+                  {(isDownloading || downloadProgress) && !isReadyToInstall && (
+                    <Button
+                      onClick={cancelDownload}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+
+                  {!isDownloading && !downloadProgress && (
+                    <Button
+                      onClick={() =>
+                        window.open(updateInfo.download_url, '_blank')
+                      }
+                      variant="outline"
+                      size="sm"
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Open in Browser
+                    </Button>
+                  )}
                 </div>
               </div>
             </AlertDescription>
