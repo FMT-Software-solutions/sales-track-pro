@@ -14,6 +14,7 @@ export type Database = {
     Tables: {
       branches: {
         Row: {
+          contact: string | null
           created_at: string | null
           description: string | null
           id: string
@@ -24,6 +25,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          contact?: string | null
           created_at?: string | null
           description?: string | null
           id?: string
@@ -34,6 +36,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          contact?: string | null
           created_at?: string | null
           description?: string | null
           id?: string

@@ -238,11 +238,13 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
                 {currentOrganization?.name || 'Sales Track Pro'}
               </div>
               <div className="branch-info text-xs mb-1">
-                {(sale as any).branches?.name || 'Unknown Branch'}
+                Location: {(sale as any).branches?.name || 'Unknown Branch'}, {(sale as any).branches?.location || 'Location not specified'}
               </div>
-              <div className="branch-info text-xs">
-                {(sale as any).branches?.location || 'Location not specified'}
-              </div>
+              {(sale as any).branches?.contact && (
+                <div className="branch-info text-xs">
+                  Contact: {(sale as any).branches.contact}
+                </div>
+              )}
             </div>
 
             <div className="receipt-info mb-4">

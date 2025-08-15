@@ -9,6 +9,7 @@ export type Sale = Database['public']['Tables']['sales']['Row'] & {
   branches?: {
     name: string;
     location: string;
+    contact: string | null;
   };
   sale_line_items?: SaleLineItem[];
   // Keep old property for backward compatibility during transition
@@ -26,6 +27,7 @@ export type Expense = Database['public']['Tables']['expenses']['Row'] & {
   branches?: {
     name: string;
     location: string;
+    contact: string | null;
   };
   created_by_profile?: {
     id: string;
@@ -141,7 +143,8 @@ export function useSales(
           *,
           branches (
             name,
-            location
+            location,
+            contact
           ),
           sale_line_items (
             id,
@@ -582,7 +585,8 @@ export function useExpenses(
           *,
           branches (
             name,
-            location
+            location,
+            contact
           ),
           created_by_profile:profiles!created_by (
             id,

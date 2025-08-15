@@ -14,6 +14,7 @@ import { useOrganization } from '@/contexts/OrganizationContext';
 const branchSchema = z.object({
   name: z.string().min(1, 'Branch name is required'),
   location: z.string().min(1, 'Location is required'),
+  contact: z.string().optional(),
   description: z.string().optional(),
   is_active: z.boolean().default(true),
 });
@@ -42,6 +43,7 @@ export function BranchForm({ branch, onSuccess }: BranchFormProps) {
     defaultValues: {
       name: branch?.name || '',
       location: branch?.location || '',
+      contact: branch?.contact || '',
       description: branch?.description || '',
       is_active: branch?.is_active ?? true,
     },
@@ -94,6 +96,18 @@ export function BranchForm({ branch, onSuccess }: BranchFormProps) {
             <p className="text-sm text-red-600">{errors.location.message}</p>
           )}
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="contact">Contact</Label>
+        <Input
+          id="contact"
+          placeholder="Enter contact information"
+          {...register('contact')}
+        />
+        {errors.contact && (
+          <p className="text-sm text-red-600">{errors.contact.message}</p>
+        )}
       </div>
 
       <div className="space-y-2">
