@@ -679,10 +679,10 @@ export function useDashboardData(branchId?: string, period: string = 'month', or
       const now = new Date();
       const { startDate, endDate } = getPeriodRange(period, now);
       const startDateStr = startDate
-        ? startDate.toISOString().split('T')[0]
+        ? startDate.toISOString()
         : undefined;
       const endDateStr = endDate
-        ? endDate.toISOString().split('T')[0]
+        ? endDate.toISOString()
         : undefined;
 
       // Get sales

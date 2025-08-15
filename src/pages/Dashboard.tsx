@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
 import { getPeriodRange, formatCurrency } from '@/lib/utils';
 
 const periods = [
@@ -27,7 +27,7 @@ export function Dashboard() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('month');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('day');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
 
@@ -83,10 +83,24 @@ export function Dashboard() {
       return uniqueMonths.map((monthStr) => {
         const monthName = format(new Date(monthStr + '-01'), 'MMM yyyy');
         const monthSales = dashboardData.salesData
-          .filter((sale) => sale.sale_date.startsWith(monthStr))
+          .filter((sale) => {
+            try {
+              const saleDate = parseISO(sale.sale_date);
+              return format(saleDate, 'yyyy-MM') === monthStr;
+            } catch {
+              return sale.sale_date.startsWith(monthStr);
+            }
+          })
           .reduce((sum, sale) => sum + sale.amount, 0);
         const monthExpenses = dashboardData.expensesData
-          .filter((expense) => expense.expense_date.startsWith(monthStr))
+          .filter((expense) => {
+            try {
+              const expenseDate = parseISO(expense.expense_date);
+              return format(expenseDate, 'yyyy-MM') === monthStr;
+            } catch {
+              return expense.expense_date.startsWith(monthStr);
+            }
+          })
           .reduce((sum, expense) => sum + expense.amount, 0);
         return {
           name: monthName,
@@ -105,10 +119,24 @@ export function Dashboard() {
         const monthStr = format(monthDate, 'yyyy-MM');
         const monthName = format(monthDate, 'MMM');
         const monthSales = dashboardData.salesData
-          .filter((sale) => sale.sale_date.startsWith(monthStr))
+          .filter((sale) => {
+            try {
+              const saleDate = parseISO(sale.sale_date);
+              return format(saleDate, 'yyyy-MM') === monthStr;
+            } catch {
+              return sale.sale_date.startsWith(monthStr);
+            }
+          })
           .reduce((sum, sale) => sum + sale.amount, 0);
         const monthExpenses = dashboardData.expensesData
-          .filter((expense) => expense.expense_date.startsWith(monthStr))
+          .filter((expense) => {
+            try {
+              const expenseDate = parseISO(expense.expense_date);
+              return format(expenseDate, 'yyyy-MM') === monthStr;
+            } catch {
+              return expense.expense_date.startsWith(monthStr);
+            }
+          })
           .reduce((sum, expense) => sum + expense.amount, 0);
         return {
           name: monthName,
@@ -128,32 +156,51 @@ export function Dashboard() {
       current.setDate(current.getDate() + 1);
     }
 
-    return days
-      .map((date) => {
-        const dateStr = format(date, 'yyyy-MM-dd');
-        const dayName =
-          selectedPeriod === 'month' ||
-          selectedPeriod === 'week' ||
-          selectedPeriod === 'day'
-            ? format(date, 'MMM d')
-            : format(date, 'MMM');
+    const chartData = days.map((date) => {
+      const dayStart = startOfDay(date);
+      const dayEnd = endOfDay(date);
+      const dayName =
+        selectedPeriod === 'month' ||
+        selectedPeriod === 'week' ||
+        selectedPeriod === 'day'
+          ? format(date, 'MMM d')
+          : format(date, 'MMM');
 
-        const daySales = dashboardData.salesData
-          .filter((sale) => sale.sale_date.startsWith(dateStr))
-          .reduce((sum, sale) => sum + sale.amount, 0);
+      const daySales = dashboardData.salesData
+        .filter((sale) => {
+          try {
+            const saleDate = parseISO(sale.sale_date);
+            return isWithinInterval(saleDate, { start: dayStart, end: dayEnd });
+          } catch {
+            // Fallback to string comparison if date parsing fails
+            return sale.sale_date.startsWith(format(date, 'yyyy-MM-dd'));
+          }
+        })
+        .reduce((sum, sale) => sum + sale.amount, 0);
 
-        const dayExpenses = dashboardData.expensesData
-          .filter((expense) => expense.expense_date.startsWith(dateStr))
-          .reduce((sum, expense) => sum + expense.amount, 0);
+      const dayExpenses = dashboardData.expensesData
+        .filter((expense) => {
+          try {
+            const expenseDate = parseISO(expense.expense_date);
+            return isWithinInterval(expenseDate, { start: dayStart, end: dayEnd });
+          } catch {
+            // Fallback to string comparison if date parsing fails
+            return expense.expense_date.startsWith(format(date, 'yyyy-MM-dd'));
+          }
+        })
+        .reduce((sum, expense) => sum + expense.amount, 0);
 
-        return {
-          name: dayName,
-          sales: daySales,
-          expenses: dayExpenses,
-          profit: daySales - dayExpenses,
-        };
-      })
-      .reverse();
+      return {
+        name: dayName,
+        sales: daySales,
+        expenses: dayExpenses,
+        profit: daySales - dayExpenses,
+      };
+    });
+
+    // For 'day' period, don't reverse to show today's data correctly
+    // For other periods, reverse to show most recent data first
+    return selectedPeriod === 'day' ? chartData : chartData.reverse();
   };
 
   if (isLoading) {
