@@ -4,6 +4,16 @@
       "version": "1.0.1",
       "platform": "win32",
       "architecture": "x64",
+      "download_url": "https://your-domain.com/releases/sales-track-pro-setup-1.0.1.exe",
+      "file_size": 87964553,
+      "release_notes": "",
+      "status": "draft",
+      "created_at": "2025-08-15T17:32:26.644Z"
+    },
+    {
+      "version": "1.0.1",
+      "platform": "win32",
+      "architecture": "x64",
       "download_url": "https://github.com/FMT-Software-solutions/fmt-releases-101/releases/download/stp-v1.0.0/sales-track-pro-setup-1.0.0.exe",
       "file_size": 90000000,
       "release_notes": "Bug fixes and improvements",

@@ -1,41 +1,26 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
-const path = require('path')
-const fs = require('fs')
-const https = require('https')
-const os = require('os')
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import https from 'https';
+import os from 'os';
+import { config } from 'dotenv';
 
-// Load environment variables - DEVELOPMENT ONLY
-function loadEnvFile() {
-  // Only load .env.local in development mode
-  // In production, VITE_ variables are baked into the build by Vite
-  if (!app.isPackaged) {
-    try {
-      const envPath = path.join(__dirname, '../../.env.local')
-      console.log('🔧 DEVELOPMENT MODE: Loading environment variables from:', envPath)
-      
-      if (fs.existsSync(envPath)) {
-        const envConfig = fs.readFileSync(envPath, 'utf8')
-        
-        envConfig.split('\n').forEach((line: string) => {
-          const match = line.match(/^([^#=]+)=(.*)$/)
-          if (match) {
-            const key = match[1].trim()
-            const value = match[2].trim()
-            if (key && value) {
-              process.env[key] = value
-              console.log(`Loaded env var: ${key}=${value.substring(0, 3)}...`)
-            }
-          }
-        })
-      } else {
-        console.log('No .env.local file found at:', envPath)
-      }
-    } catch (error) {
-      console.error('Error loading environment file:', error)
-    }
-  } else {
-    console.log('🔒 PACKAGED MODE: Using build-time environment variables (no .env files needed)')
-  }
+// Check if running in development
+const isDev = !app.isPackaged;
+
+let supabaseConfig = {};
+
+// 1. Load from .env in dev
+if (process.env.NODE_ENV === "development" || isDev) {
+  config(); // loads .env
+  supabaseConfig = {
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+  };
+} else {
+  // 2. Load from config.json in packaged app
+  const configPath = path.join((process as any).resourcesPath, "config.json");
+  supabaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 }
 
 // The built directory structure
@@ -166,17 +151,16 @@ function registerIPCHandlers() {
   ipcMain.handle('check-for-updates', async () => {
     try {
       const currentVersion = app.getVersion();
-      const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+      const supabaseKey = (supabaseConfig as any).SUPABASE_ANON_KEY;
       
       if (!supabaseKey) {
-        console.error('VITE_SUPABASE_ANON_KEY not found in environment variables');
+        console.error('SUPABASE KEY not found');
         return { success: false, error: 'Supabase API key not configured' };
       }
       
       console.log('Checking for updates with version:', currentVersion);
-      console.log('Using Supabase key:', supabaseKey.substring(0, 10) + '...');
       
-      const response = await fetch(`https://srssvwepphmoyeworrrl.supabase.co/functions/v1/check-updates`, {
+      const response = await fetch(`${(supabaseConfig as any).SUPABASE_URL}/functions/v1/check-updates`, {
         method: 'POST',
         headers: {
           'apikey': supabaseKey,
@@ -372,9 +356,7 @@ app.on('window-all-closed', () => {
 })
 
 app.whenReady().then(() => {
-  // Load environment variables before creating window
-  loadEnvFile()
-  // Register IPC handlers after environment is loaded
+  // Register IPC handlers
   registerIPCHandlers()
   createWindow()
 })

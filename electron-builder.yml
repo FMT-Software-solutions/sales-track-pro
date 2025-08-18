@@ -11,10 +11,12 @@ files:
   - node_modules/**/*
   - package.json
 extraResources:
-  - from: assets
+  - from: release/assets
     to: assets
     filter:
       - '**/*'
+  - from: 'config/config.json'
+    to: 'config.json'
 win:
   target:
     - target: nsis
