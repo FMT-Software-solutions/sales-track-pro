@@ -20,6 +20,7 @@ import UserManagement from '@/pages/UserManagement';
 import { PasswordReset } from '@/pages/PasswordReset';
 import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
+// import TestCreateOwner from './pages/TestCreateOwner';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -44,6 +45,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/password-reset" element={<PasswordReset />} />
+          {/* <Route path="/test-create-owner" element={<TestCreateOwner />} /> */}
           <Route
             path="/dashboard"
             element={
