@@ -164,8 +164,10 @@ export default function Sales() {
     if (user?.profile?.role === 'admin') {
       return true; // Admin can delete all sales
     }
-    // Branch managers can only delete sales from their own branch
-    return user?.profile?.branch_id === sale.branch_id;
+    // Branch managers can only delete their own sales from their assigned branch
+    return (
+      user?.profile?.branch_id === sale.branch_id && user.id === sale.created_by
+    );
   };
 
   return (

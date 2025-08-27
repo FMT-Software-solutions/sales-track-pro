@@ -175,7 +175,10 @@ export default function Expenses() {
       return true; // Admin can delete all expenses
     }
     // Branch managers can only delete expenses from their own branch
-    return user?.profile?.branch_id === expense.branch_id;
+    return (
+      user?.profile?.branch_id === expense.branch_id &&
+      user.id === expense.created_by
+    );
   };
 
   return (
