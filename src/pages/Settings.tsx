@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export function Settings() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const {
     currentOrganization,
     setCurrentOrganization,
@@ -89,6 +89,17 @@ export function Settings() {
         id: user.id,
         full_name: fullName,
       });
+
+      // Update the auth store with the new profile data
+      if (user?.profile) {
+        setUser({
+          ...user,
+          profile: {
+            ...user.profile,
+            full_name: fullName,
+          },
+        });
+      }
 
       toast.success('Profile updated successfully');
     } catch (error) {

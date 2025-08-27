@@ -196,13 +196,19 @@ export default function Expenses() {
                   <div className="flex gap-2">
                     <DatePresets
                       value={dateRange}
-                      onChange={setDateRange}
+                      onChange={(range) => {
+                        setDateRange(range);
+                        setPage(1);
+                      }}
                       placeholder="Filter by date range"
                     />
                     {dateRange && (
                       <Button
                         variant="outline"
-                        onClick={() => setDateRange(undefined)}
+                        onClick={() => {
+                          setDateRange(undefined);
+                          setPage(1);
+                        }}
                         size="sm"
                       >
                         Clear
@@ -215,8 +221,8 @@ export default function Expenses() {
                 <div className="w-full lg:w-[200px]">
                   <Select
                     value={selectedBranch}
-                    onValueChange={(v) => {
-                      setSelectedBranch(v);
+                    onValueChange={(value) => {
+                      setSelectedBranch(value);
                       setPage(1);
                     }}
                     disabled={

@@ -253,12 +253,16 @@ export default function UserManagement() {
       userId: string;
       userData: Partial<CreateUserForm>;
     }) => {
+      // If role is being changed to admin, automatically remove branch assignment
+      const branchId =
+        userData.role === 'admin' ? null : userData.branchId || null;
+
       const { error } = await supabase
         .from('profiles')
         .update({
           full_name: userData.fullName,
           role: userData.role,
-          branch_id: userData.branchId || null,
+          branch_id: branchId,
         })
         .eq('id', userId);
 
@@ -503,7 +507,13 @@ export default function UserManagement() {
                   <Select
                     value={createForm.role}
                     onValueChange={(value: 'admin' | 'branch_manager') =>
-                      setCreateForm({ ...createForm, role: value })
+                      setCreateForm({
+                        ...createForm,
+                        role: value,
+                        // Clear branch assignment when role is changed to admin
+                        branchId:
+                          value === 'admin' ? undefined : createForm.branchId,
+                      })
                     }
                   >
                     <SelectTrigger>
@@ -696,7 +706,12 @@ export default function UserManagement() {
               <Select
                 value={editForm.role}
                 onValueChange={(value: 'admin' | 'branch_manager') =>
-                  setEditForm({ ...editForm, role: value })
+                  setEditForm({
+                    ...editForm,
+                    role: value,
+                    // Clear branch assignment when role is changed to admin
+                    branchId: value === 'admin' ? undefined : editForm.branchId,
+                  })
                 }
               >
                 <SelectTrigger>

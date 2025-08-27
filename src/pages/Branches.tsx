@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useBranches } from '@/hooks/queries';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -13,16 +14,23 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { BranchForm } from '@/components/forms/BranchForm';
-import { Plus, MapPin, Calendar, Edit } from 'lucide-react';
+import { Plus, MapPin, Calendar, Edit, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Database } from '@/lib/supabase';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type Branch = Database['public']['Tables']['branches']['Row'];
 
 export function Branches() {
   const { currentOrganization } = useOrganization();
+  const { user } = useAuthStore();
   const { data: branches = [], isLoading } = useBranches(
     currentOrganization?.id
   );
@@ -32,6 +40,8 @@ export function Branches() {
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'active' | 'inactive'
   >('all');
+
+  const isAdmin = user?.profile?.role === 'admin';
 
   const handleSuccess = () => {
     setIsDialogOpen(false);
@@ -119,7 +129,7 @@ export function Branches() {
               <DialogTrigger asChild>
                 <Button onClick={handleCreate}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Add <span className="hidden md:inline">Branch</span>
+                  Add <span className="hidden md:inline ml-1">Branch</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[425px]">
@@ -140,48 +150,102 @@ export function Branches() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredBranches.map((branch) => (
-          <Card key={branch.id} className="relative">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">{branch.name}</CardTitle>
-                <div className="flex items-center space-x-2">
-                  <Badge variant={branch.is_active ? 'default' : 'secondary'}>
-                    {branch.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEdit(branch)}
-                    className="p-2 "
+      <TooltipProvider>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {filteredBranches.map((branch) => {
+            const canEdit = isAdmin || branch.is_active;
+            const isInactive = !branch.is_active;
+
+            return (
+              <Card
+                key={branch.id}
+                className={`relative transition-all duration-200 ${
+                  isInactive ? 'opacity-90 border-gray-200' : 'hover:shadow-md'
+                }`}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle
+                      className={`text-lg ${isInactive ? 'text-gray-500' : ''}`}
+                    >
+                      {branch.name}
+                      {isInactive && (
+                        <Lock className="inline ml-2 h-4 w-4 text-gray-400" />
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center space-x-2">
+                      <Badge
+                        variant={branch.is_active ? 'default' : 'secondary'}
+                        className={
+                          isInactive ? 'bg-gray-300 text-gray-600' : ''
+                        }
+                      >
+                        {branch.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                      {canEdit ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(branch)}
+                          className="p-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              className="p-2 cursor-not-allowed"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Only admins can edit inactive branches</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </div>
+                  <div
+                    className={`flex items-center text-sm ${
+                      isInactive ? 'text-gray-500' : 'text-lime-800'
+                    }`}
                   >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-              <div className="flex items-center text-sm text-lime-800">
-                <MapPin className="mr-1 h-4 w-4" />
-                {branch.location}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {branch.description && (
-                <p className="text-sm text-muted-foreground mb-4">
-                  {branch.description}
-                </p>
-              )}
-              <div className="flex items-center text-xs text-muted-foreground">
-                <Calendar className="mr-1 h-3 w-3" />
-                Created{' '}
-                {branch.created_at
-                  ? format(new Date(branch.created_at), 'MMM d, yyyy')
-                  : 'Unknown'}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                    <MapPin className="mr-1 h-4 w-4" />
+                    {branch.location}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {branch.description && (
+                    <p
+                      className={`text-sm mb-4 ${
+                        isInactive ? 'text-gray-400' : 'text-muted-foreground'
+                      }`}
+                    >
+                      {branch.description}
+                    </p>
+                  )}
+                  <div
+                    className={`flex items-center text-xs ${
+                      isInactive ? 'text-gray-400' : 'text-muted-foreground'
+                    }`}
+                  >
+                    <Calendar className="mr-1 h-3 w-3" />
+                    Created{' '}
+                    {branch.created_at
+                      ? format(new Date(branch.created_at), 'MMM d, yyyy')
+                      : 'Unknown'}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </TooltipProvider>
 
       {filteredBranches.length === 0 && (
         <div className="text-center py-12">

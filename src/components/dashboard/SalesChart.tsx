@@ -15,6 +15,7 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
+  Cell,
 } from 'recharts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/utils';
@@ -79,7 +80,14 @@ export function SalesChart({ data, period }: SalesChartProps) {
                 />
                 <Bar dataKey="sales" fill="#3b82f6" name="Sales" />
                 <Bar dataKey="expenses" fill="#ef4444" name="Expenses" />
-                <Bar dataKey="profit" fill="#10b981" name="Profit" />
+                <Bar dataKey="profit" name="Profit">
+                  {data.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.profit >= 0 ? '#10b981' : '#ef4444'}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </TabsContent>
@@ -131,6 +139,18 @@ export function SalesChart({ data, period }: SalesChartProps) {
                   stroke="#10b981"
                   strokeWidth={2}
                   name="Profit"
+                  dot={(props: any) => {
+                    const { cx, cy, payload } = props;
+                    return (
+                      <circle
+                        cx={cx}
+                        cy={cy}
+                        r={3}
+                        fill={payload.profit >= 0 ? '#10b981' : '#ef4444'}
+                        stroke={payload.profit >= 0 ? '#10b981' : '#ef4444'}
+                      />
+                    );
+                  }}
                 />
               </LineChart>
             </ResponsiveContainer>

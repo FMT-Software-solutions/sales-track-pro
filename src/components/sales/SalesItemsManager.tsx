@@ -45,7 +45,11 @@ export function SalesItemsManager() {
   const { currentOrganization } = useOrganization();
   const { data: salesItems = [] } = useSalesItems(currentOrganization?.id);
   const deleteSalesItem = useDeleteSalesItem();
-  const { searchValue, debouncedSearchValue, setSearchValue } = useDebouncedSearch('', 500);
+  const {
+    searchValue,
+    debouncedSearchValue,
+    setSearchValue,
+  } = useDebouncedSearch('', 500);
   const [editItem, setEditItem] = useState<SalesItem | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -53,9 +57,13 @@ export function SalesItemsManager() {
   const pageSize = 10;
 
   // Filter items by debounced search
-  const filteredItems = salesItems.filter((item: SalesItem) =>
-    item.name.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ||
-    (item.description?.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ?? false)
+  const filteredItems = salesItems.filter(
+    (item: SalesItem) =>
+      item.name.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ||
+      (item.description
+        ?.toLowerCase()
+        .includes(debouncedSearchValue.toLowerCase()) ??
+        false)
   );
 
   // Pagination
@@ -74,7 +82,7 @@ export function SalesItemsManager() {
     try {
       await deleteSalesItem.mutateAsync(id);
       toast.success('Sales item deleted successfully');
-    } catch (error: unknown) {
+    } catch (error) {
       toast.error((error as Error).message || 'Failed to delete sales item');
     }
   };
@@ -99,9 +107,12 @@ export function SalesItemsManager() {
               Manage your sales items and their prices.
             </CardDescription>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <Dialog
+            open={isCreateDialogOpen}
+            onOpenChange={setIsCreateDialogOpen}
+          >
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-green-600 text-white hover:bg-green-700 hover:text-white">
                 <Plus className="h-4 w-4 mr-2" />
                 Add Item
               </Button>
@@ -128,7 +139,7 @@ export function SalesItemsManager() {
             className="w-full md:w-64"
           />
         </div>
-        
+
         <div className="overflow-x-auto">
           <Table className="min-w-[600px]">
             <TableHeader>
@@ -144,7 +155,8 @@ export function SalesItemsManager() {
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell className="text-green-600">
-                    {currentOrganization?.currency || 'GH₵'} {item.price?.toFixed(2) || '0.00'}
+                    {currentOrganization?.currency || 'GH₵'}{' '}
+                    {item.price?.toFixed(2) || '0.00'}
                   </TableCell>
                   <TableCell>{item.description || '-'}</TableCell>
                   <TableCell className="text-right">
@@ -164,9 +176,12 @@ export function SalesItemsManager() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Sales Item</AlertDialogTitle>
+                            <AlertDialogTitle>
+                              Delete Sales Item
+                            </AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete "{item.name}"? This action cannot be undone.
+                              Are you sure you want to delete "{item.name}"?
+                              This action cannot be undone.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -232,7 +247,10 @@ export function SalesItemsManager() {
               <DialogTitle>Edit Sales Item</DialogTitle>
             </DialogHeader>
             {editItem && (
-              <SalesItemForm salesItem={editItem} onSuccess={handleEditSuccess} />
+              <SalesItemForm
+                salesItem={editItem}
+                onSuccess={handleEditSuccess}
+              />
             )}
           </DialogContent>
         </Dialog>

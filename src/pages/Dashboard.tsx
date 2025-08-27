@@ -12,7 +12,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
-import { format, isWithinInterval, parseISO, startOfDay, endOfDay } from 'date-fns';
+import {
+  format,
+  isWithinInterval,
+  parseISO,
+  startOfDay,
+  endOfDay,
+} from 'date-fns';
 import { getPeriodRange, formatCurrency } from '@/lib/utils';
 
 const periods = [
@@ -28,21 +34,23 @@ export function Dashboard() {
   const { currentOrganization } = useOrganization();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('day');
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
 
-  // Initialize branch when user and branches data are available
+  // Initialize branch when user and branches data are available (only once)
   useEffect(() => {
-    if (user?.profile && branches.length > 0) {
+    if (user?.profile && branches.length > 0 && !isInitialized) {
       if (user.profile.role !== 'admin' && user.profile.branch_id) {
         // Non-admin users: set to their assigned branch (should be the only one returned)
         setSelectedBranch(user.profile.branch_id);
-      } else if (user.profile.role === 'admin' && selectedBranch === '') {
+      } else if (user.profile.role === 'admin') {
         // Admin users: set to 'all' if not already set
         setSelectedBranch('all');
       }
+      setIsInitialized(true);
     }
-  }, [user?.profile, branches, selectedBranch]);
+  }, [user?.profile, branches, isInitialized]);
 
   // For non-admin users, automatically set their branch and prevent changing it
   const effectiveBranchId =
@@ -182,7 +190,10 @@ export function Dashboard() {
         .filter((expense) => {
           try {
             const expenseDate = parseISO(expense.expense_date);
-            return isWithinInterval(expenseDate, { start: dayStart, end: dayEnd });
+            return isWithinInterval(expenseDate, {
+              start: dayStart,
+              end: dayEnd,
+            });
           } catch {
             // Fallback to string comparison if date parsing fails
             return expense.expense_date.startsWith(format(date, 'yyyy-MM-dd'));
@@ -203,23 +214,8 @@ export function Dashboard() {
     return selectedPeriod === 'day' ? chartData : chartData.reverse();
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-32 bg-gray-100 animate-pulse rounded-lg"
-            />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Show loading skeleton only for stats cards, keep selectors visible
+  const showLoadingSkeleton = isLoading && !isInitialized;
 
   const chartData = generateChartData();
 
@@ -281,64 +277,77 @@ export function Dashboard() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Total Sales"
-          value={formatCurrency(
-            dashboardData?.totalSales || 0,
-            currentOrganization?.currency
-          )}
-          change=""
-          changeType="positive"
-          icon={<TrendingUp className="h-4 w-4" />}
-          color="text-green-500"
-        />
-        <StatsCard
-          title="Total Expenses"
-          value={formatCurrency(
-            dashboardData?.totalExpenses || 0,
-            currentOrganization?.currency
-          )}
-          change=""
-          changeType="negative"
-          icon={<TrendingDown className="h-4 w-4" />}
-          color="text-red-500"
-        />
-        <StatsCard
-          title="Net Profit"
-          value={formatCurrency(
-            dashboardData?.netProfit || 0,
-            currentOrganization?.currency
-          )}
-          change={
-            dashboardData?.netProfit && dashboardData.netProfit > 0 ? '' : ''
-          }
-          changeType={
-            dashboardData?.netProfit && dashboardData.netProfit > 0
-              ? 'positive'
-              : 'negative'
-          }
-          icon={<TrendingUp className="h-4 w-4" />}
-          className={
-            dashboardData?.netProfit && dashboardData.netProfit < 0
-              ? 'border-red-200'
-              : ''
-          }
-          color={
-            dashboardData?.netProfit && dashboardData.netProfit < 0
-              ? 'text-red-500'
-              : 'text-green-500'
-          }
-        />
-        <StatsCard
-          title="Transactions"
-          value={String(
-            (dashboardData?.salesData.length || 0) +
-              (dashboardData?.expensesData.length || 0)
-          )}
-          change="Total recorded"
-          changeType="neutral"
-          icon={<Activity className="h-4 w-4" />}
-        />
+        {showLoadingSkeleton ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-32 bg-gray-100 animate-pulse rounded-lg"
+            />
+          ))
+        ) : (
+          <>
+            <StatsCard
+              title="Total Sales"
+              value={formatCurrency(
+                dashboardData?.totalSales || 0,
+                currentOrganization?.currency
+              )}
+              change=""
+              changeType="positive"
+              icon={<TrendingUp className="h-4 w-4" />}
+              color="text-green-500"
+            />
+            <StatsCard
+              title="Total Expenses"
+              value={formatCurrency(
+                dashboardData?.totalExpenses || 0,
+                currentOrganization?.currency
+              )}
+              change=""
+              changeType="negative"
+              icon={<TrendingDown className="h-4 w-4" />}
+              color="text-red-500"
+            />
+            <StatsCard
+              title="Net Profit"
+              value={formatCurrency(
+                dashboardData?.netProfit || 0,
+                currentOrganization?.currency
+              )}
+              change={
+                dashboardData?.netProfit && dashboardData.netProfit > 0
+                  ? ''
+                  : ''
+              }
+              changeType={
+                dashboardData?.netProfit && dashboardData.netProfit > 0
+                  ? 'positive'
+                  : 'negative'
+              }
+              icon={<TrendingUp className="h-4 w-4" />}
+              className={
+                dashboardData?.netProfit && dashboardData.netProfit < 0
+                  ? 'border-red-200'
+                  : ''
+              }
+              color={
+                dashboardData?.netProfit && dashboardData.netProfit < 0
+                  ? 'text-red-500'
+                  : 'text-green-500'
+              }
+            />
+            <StatsCard
+              title="Transactions"
+              value={String(
+                (dashboardData?.salesData.length || 0) +
+                  (dashboardData?.expensesData.length || 0)
+              )}
+              change="Total recorded"
+              changeType="neutral"
+              icon={<Activity className="h-4 w-4" />}
+            />
+          </>
+        )}
       </div>
 
       {/* Charts */}

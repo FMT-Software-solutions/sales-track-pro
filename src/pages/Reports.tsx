@@ -12,13 +12,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Table,
@@ -29,6 +22,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { ChevronDown } from 'lucide-react';
 import { Download, FileText, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import jsPDF from 'jspdf';
@@ -45,7 +45,10 @@ export function Reports() {
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
   const [endDate, setEndDate] = useState<Date>(new Date());
-  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
+  const [includeInactiveBranches, setIncludeInactiveBranches] = useState<
+    boolean
+  >(false);
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
 
@@ -54,38 +57,87 @@ export function Reports() {
     if (user?.profile && branches.length > 0) {
       if (user.profile.role !== 'admin' && user.profile.branch_id) {
         // Non-admin users: set to their assigned branch (should be the only one returned)
-        setSelectedBranch(user.profile.branch_id);
-      } else if (user.profile.role === 'admin' && selectedBranch === '') {
-        // Admin users: set to 'all' if not already set
-        setSelectedBranch('all');
+        setSelectedBranches([user.profile.branch_id]);
+      } else if (
+        user.profile.role === 'admin' &&
+        selectedBranches.length === 0
+      ) {
+        // Admin users: set to empty array if not already set
+        setSelectedBranches([]);
       }
     }
-  }, [user?.profile, branches, selectedBranch]);
+  }, [user?.profile, branches, selectedBranches]);
 
-  // For non-admin users, automatically set their branch and prevent changing it
+  // Filter branches for data queries based on selection and active status
+  const getFilteredBranchIds = () => {
+    if (user?.profile?.role !== 'admin') {
+      return user?.profile?.branch_id ? [user.profile.branch_id] : [];
+    }
+
+    if (selectedBranches.length === 0) {
+      // "All branches" - filter by active status
+      const availableBranches = includeInactiveBranches
+        ? branches
+        : branches?.filter((branch) => branch.is_active);
+      return availableBranches?.map((branch) => branch.id) || [];
+    }
+
+    return selectedBranches;
+  };
+
+  const filteredBranchIds = getFilteredBranchIds();
+
+  // For now, we'll use the first branch ID for the existing hooks
+  // TODO: Update hooks to support multiple branch IDs
   const effectiveBranchId =
-    user?.profile?.role === 'admin'
-      ? selectedBranch === 'all'
-        ? undefined
-        : selectedBranch
-      : user?.profile?.branch_id;
+    filteredBranchIds.length === 1 ? filteredBranchIds[0] : undefined;
 
-  const { data: sales = [], isLoading: salesLoading } = useSales(
-    effectiveBranchId || undefined,
+  const { data: allSales = [], isLoading: salesLoading } = useSales(
+    undefined, // Get all sales first
     startDate.toISOString(),
     endDate.toISOString(),
     currentOrganization?.id
   );
-  const { data: expenses = [], isLoading: expensesLoading } = useExpenses(
-    effectiveBranchId || undefined,
+
+  const { data: allExpenses = [], isLoading: expensesLoading } = useExpenses(
+    undefined, // Get all expenses first
     undefined,
     startDate.toISOString(),
     endDate.toISOString(),
     currentOrganization?.id
   );
 
-  // Since useBranches now returns the correct branches based on user role, we just need to filter for active ones
-  const userBranches = branches.filter((branch) => branch.is_active);
+  // Filter sales and expenses by selected branches
+  const sales = allSales.filter((sale) =>
+    filteredBranchIds.includes(sale.branch_id)
+  );
+  const expenses = allExpenses.filter((expense) =>
+    filteredBranchIds.includes(expense.branch_id)
+  );
+
+  // Filter branches based on active status and user preference
+  const userBranches =
+    user?.profile?.role === 'admin'
+      ? includeInactiveBranches
+        ? branches
+        : branches?.filter((branch) => branch.is_active)
+      : branches?.filter((branch) => branch.id === user?.profile?.branch_id);
+
+  // Reset selected branches when includeInactiveBranches changes
+  useEffect(() => {
+    if (!includeInactiveBranches && selectedBranches.length > 0) {
+      // Filter out inactive branches from selection
+      const activeBranchIds = userBranches.filter(branch => branch.is_active).map(branch => branch.id);
+      const filteredSelection = selectedBranches.filter(id => activeBranchIds.includes(id));
+      
+      // If no active branches remain selected, reset to all active branches
+      if (filteredSelection.length === 0) {
+        setSelectedBranches([]);
+      } else {
+        setSelectedBranches(filteredSelection);
+      }
+    }
+  }, [includeInactiveBranches, userBranches, selectedBranches]);
 
   const totalSales = sales.reduce((sum, sale) => sum + sale.amount, 0);
   const totalExpenses = expenses.reduce(
@@ -116,9 +168,12 @@ export function Reports() {
     );
     doc.text(
       `Branch: ${
-        selectedBranch === 'all'
+        selectedBranches.length === 0
           ? 'All Branches'
-          : branches.find((b) => b.id === selectedBranch)?.name || 'Unknown'
+          : selectedBranches.length === 1
+          ? branches.find((b) => b.id === selectedBranches[0])?.name ||
+            'Unknown'
+          : 'Multiple Branches'
       }`,
       20,
       45
@@ -341,33 +396,113 @@ export function Reports() {
 
             {/* Right side: Branch Selector and Export Button */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
-              <div className="space-y-2">
-                <Label htmlFor="branch">Branch</Label>
-                <Select
-                  value={selectedBranch}
-                  onValueChange={setSelectedBranch}
-                  disabled={
-                    user?.profile?.role !== 'admin' && userBranches.length <= 1
-                  }
-                >
-                  <SelectTrigger className="w-[200px]">
-                    <SelectValue
-                      placeholder={
-                        selectedBranch === '' ? 'Loading...' : 'Select branch'
+              <div className="space-y-2 flex flex-col">
+                <div className="flex gap-2">
+                  <Label htmlFor="branch">Branches</Label>
+                  {user?.profile?.role === 'admin' && (
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="include-inactive"
+                        checked={includeInactiveBranches}
+                        onCheckedChange={(checked) =>
+                          setIncludeInactiveBranches(checked === true)
+                        }
+                      />
+                      <Label htmlFor="include-inactive" className="text-xs">
+                        Include inactive ones
+                      </Label>
+                    </div>
+                  )}
+                </div>
+
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-[250px] justify-between"
+                      disabled={
+                        user?.profile?.role !== 'admin' &&
+                        userBranches?.length <= 1
                       }
-                    />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {user?.profile?.role === 'admin' && (
-                      <SelectItem value="all">All Branches</SelectItem>
-                    )}
-                    {userBranches.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    >
+                      <span className="truncate">
+                        {selectedBranches.length === 0
+                          ? `All ${
+                              includeInactiveBranches
+                                ? 'Branches'
+                                : 'Active Branches'
+                            }`
+                          : selectedBranches.length === 1
+                          ? userBranches?.find(
+                              (b) => b.id === selectedBranches[0]
+                            )?.name || 'Unknown'
+                          : `${selectedBranches.length} branches selected`}
+                      </span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[250px] p-0">
+                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto">
+                      {user?.profile?.role === 'admin' && (
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="all-branches"
+                            checked={selectedBranches.length === 0}
+                            onCheckedChange={(checked) => {
+                              if (checked === true) {
+                                setSelectedBranches([]);
+                              }
+                            }}
+                          />
+                          <Label
+                            htmlFor="all-branches"
+                            className="text-sm font-medium"
+                          >
+                            All{' '}
+                            {includeInactiveBranches
+                              ? 'Branches'
+                              : 'Active Branches'}
+                          </Label>
+                        </div>
+                      )}
+                      {userBranches?.map((branch) => (
+                        <div
+                          key={branch.id}
+                          className="flex items-center space-x-2"
+                        >
+                          <Checkbox
+                            id={`branch-${branch.id}`}
+                            checked={selectedBranches.includes(branch.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked === true) {
+                                setSelectedBranches((prev) => [
+                                  ...prev,
+                                  branch.id,
+                                ]);
+                              } else if (checked === false) {
+                                setSelectedBranches((prev) =>
+                                  prev.filter((id) => id !== branch.id)
+                                );
+                              }
+                            }}
+                            disabled={
+                              user?.profile?.role !== 'admin' &&
+                              userBranches.length <= 1
+                            }
+                          />
+                          <Label
+                            htmlFor={`branch-${branch.id}`}
+                            className={`text-sm cursor-pointer ${
+                              !branch.is_active ? 'text-red-600' : ''
+                            }`}
+                          >
+                            {branch.name} {!branch.is_active && '(Inactive)'}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               <div className="flex items-end space-x-2">
@@ -380,6 +515,43 @@ export function Reports() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Selected Branches Display */}
+      {(selectedBranches.length > 0 || user?.profile?.role === 'admin') && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">Report Scope</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {selectedBranches.length === 0 ? (
+                <Badge variant="outline" className="text-sm">
+                  All {includeInactiveBranches ? 'Branches' : 'Active Branches'}
+                  {includeInactiveBranches &&
+                    user?.profile?.role === 'admin' &&
+                    ' (Including Inactive)'}
+                </Badge>
+              ) : (
+                selectedBranches
+                  .map((branchId) => branches?.find((b) => b.id === branchId))
+                  .filter(branch => branch && (includeInactiveBranches || branch.is_active))
+                  .map((branch) => (
+                    <Badge
+                      key={branch!.id}
+                      variant={
+                        branch!.is_active === false ? 'destructive' : 'outline'
+                      }
+                      className="text-sm"
+                    >
+                      {branch!.name || 'Unknown'}
+                      {branch!.is_active === false && ' (Inactive)'}
+                    </Badge>
+                  ))
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
@@ -484,8 +656,16 @@ export function Reports() {
                             {format(new Date(sale.sale_date), 'MMM d, yyyy')}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
+                            <Badge
+                              variant={
+                                (sale as any).branches?.is_active === false
+                                  ? 'destructive'
+                                  : 'outline'
+                              }
+                            >
                               {(sale as any).branches?.name || 'Unknown'}
+                              {(sale as any).branches?.is_active === false &&
+                                ' (Inactive)'}
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -563,8 +743,16 @@ export function Reports() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Badge variant="outline">
+                            <Badge
+                              variant={
+                                (expense as any).branches?.is_active === false
+                                  ? 'destructive'
+                                  : 'outline'
+                              }
+                            >
                               {(expense as any).branches?.name || 'Unknown'}
+                              {(expense as any).branches?.is_active === false &&
+                                ' (Inactive)'}
                             </Badge>
                           </TableCell>
                           <TableCell>

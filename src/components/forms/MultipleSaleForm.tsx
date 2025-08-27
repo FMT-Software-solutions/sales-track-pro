@@ -326,6 +326,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
             size="sm" 
             variant="outline"
             disabled={showAddForm}
+            className='bg-green-600 text-white hover:bg-green-700 hover:text-white'
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Item
@@ -401,6 +402,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
                   onClick={addItem} 
                   size="sm"
                   disabled={!newItem.productId}
+                   className='bg-green-600 text-white hover:bg-green-700 hover:text-white'
                 >
                   Add Item
                 </Button>
