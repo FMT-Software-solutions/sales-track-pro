@@ -27,6 +27,8 @@ import { format } from 'date-fns';
 import { Calendar22 } from '@/components/ui/calendar22';
 import React from 'react';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { Link } from 'react-router-dom';
+import { Plus } from 'lucide-react';
 
 const expenseSchema = z.object({
   branch_id: z.string().min(1, 'Branch is required'),
@@ -47,7 +49,9 @@ interface ExpenseFormProps {
 export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const { data: branches = [] } = useBranches(currentOrganization?.id);
+  const { data: branches = [], isLoading } = useBranches(
+    currentOrganization?.id
+  );
   const { data: expenseCategories = [] } = useExpenseCategories(
     currentOrganization?.id
   );
@@ -174,24 +178,37 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 items-baseline">
         <div className="space-y-2">
           <Label htmlFor="branch_id">Branch</Label>
-          <Select
-            value={selectedBranchId}
-            onValueChange={(value) => setValue('branch_id', value)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a branch" />
-            </SelectTrigger>
-            <SelectContent>
-              {userBranches.map((branch) => (
-                <SelectItem key={branch.id} value={branch.id}>
-                  {branch.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex gap-1">
+            <Select
+              value={selectedBranchId}
+              onValueChange={(value) => setValue('branch_id', value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select a branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {userBranches.map((branch) => (
+                  <SelectItem key={branch.id} value={branch.id}>
+                    {branch.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {userBranches.length === 0 && !isLoading && (
+              <Link to="/branches">
+                <Button
+                  variant="outline"
+                  className="border-green-600 text-green-600 hover:border-green-700 hover:text-green-700 hover:bg-white"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Add Branch
+                </Button>
+              </Link>
+            )}
+          </div>
+
           {errors.branch_id && (
             <p className="text-sm text-red-600">{errors.branch_id.message}</p>
           )}
@@ -261,7 +278,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
                 variant="outline"
                 size="sm"
                 onClick={() => setShowNewCategoryForm(true)}
-                className="w-full"
+                className="border-green-600 text-green-600 hover:border-green-700 hover:text-green-700 hover:bg-white"
               >
                 + Add New Category
               </Button>

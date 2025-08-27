@@ -112,7 +112,7 @@ export function SalesItemsManager() {
             onOpenChange={setIsCreateDialogOpen}
           >
             <DialogTrigger asChild>
-              <Button className="bg-green-600 text-white hover:bg-green-700 hover:text-white">
+              <Button>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Item
               </Button>

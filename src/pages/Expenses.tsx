@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
-import { useExpenses, useBranches } from '@/hooks/queries';
+import { useExpenses, useBranches, useDeleteExpense } from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -38,10 +38,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Edit, Search } from 'lucide-react';
+import { Edit, Search, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Expense } from '@/hooks/queries';
+import { toast } from 'sonner';
 
 export default function Expenses() {
   const { user } = useAuthStore();
@@ -70,8 +81,12 @@ export default function Expenses() {
   } = useDebouncedSearch('', 500);
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 10;
+
+  const deleteExpenseMutation = useDeleteExpense();
 
   // For non-admin users, automatically set their branch and prevent changing it
   const effectiveBranchId =
@@ -129,6 +144,38 @@ export default function Expenses() {
   const handleDialogClose = () => {
     setEditExpense(null);
     setIsDialogOpen(false);
+  };
+
+  const handleDelete = (expense: Expense) => {
+    setDeletingExpense(expense);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deletingExpense) {
+      try {
+        await deleteExpenseMutation.mutateAsync(deletingExpense.id);
+        setIsDeleteDialogOpen(false);
+        setDeletingExpense(null);
+        toast.success('Expense data deleted successfully');
+      } catch (error) {
+        console.error('Failed to delete expense:', error);
+      }
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setIsDeleteDialogOpen(false);
+    setDeletingExpense(null);
+  };
+
+  // Check if user can delete an expense
+  const canDeleteExpense = (expense: Expense) => {
+    if (user?.profile?.role === 'admin') {
+      return true; // Admin can delete all expenses
+    }
+    // Branch managers can only delete expenses from their own branch
+    return user?.profile?.branch_id === expense.branch_id;
   };
 
   return (
@@ -259,7 +306,7 @@ export default function Expenses() {
                       <TableHead>Category</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Edit</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -272,8 +319,16 @@ export default function Expenses() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline">
+                          <Badge
+                            variant={
+                              (expense as any).branches?.is_active === false
+                                ? 'destructive'
+                                : 'outline'
+                            }
+                          >
                             {(expense as any).branches?.name || 'Unknown'}
+                            {(expense as any).branches?.is_active === false &&
+                              ' (Inactive)'}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -289,13 +344,25 @@ export default function Expenses() {
                         </TableCell>
                         <TableCell>{expense.description || '-'}</TableCell>
                         <TableCell>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            onClick={() => handleEdit(expense)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              onClick={() => handleEdit(expense)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            {canDeleteExpense(expense) && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                onClick={() => handleDelete(expense)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -367,6 +434,52 @@ export default function Expenses() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this expense? This action cannot
+              be undone.
+              {deletingExpense && (
+                <div className="mt-2 p-2 bg-gray-50 rounded">
+                  <strong>Expense Details:</strong>
+                  <br />
+                  Date:{' '}
+                  {deletingExpense.expense_date
+                    ? format(
+                        new Date(deletingExpense.expense_date),
+                        'MMM dd, yyyy'
+                      )
+                    : 'N/A'}
+                  <br />
+                  Description: {deletingExpense.description || 'N/A'}
+                  <br />
+                  Amount: {currentOrganization?.currency || 'GH₵'}{' '}
+                  {deletingExpense.amount?.toFixed(2) || '0.00'}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteExpenseMutation.isPending}
+            >
+              {deleteExpenseMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

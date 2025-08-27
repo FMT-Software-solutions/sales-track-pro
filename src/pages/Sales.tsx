@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
-import { useSales, useBranches, Sale } from '@/hooks/queries';
+import { useSales, useBranches, useDeleteSale, Sale } from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -40,9 +40,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Edit, Search } from 'lucide-react';
+import { Edit, Search, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 export default function Sales() {
   const { user } = useAuthStore();
@@ -68,8 +79,12 @@ export default function Sales() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 10;
+
+  const deleteSaleMutation = useDeleteSale();
 
   const { searchValue: debouncedSearchValue } = useDebouncedSearch(
     searchValue,
@@ -121,6 +136,38 @@ export default function Sales() {
     setIsEditDialogOpen(false);
   };
 
+  const handleDelete = (sale: Sale) => {
+    setDeletingSale(sale);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deletingSale) {
+      try {
+        await deleteSaleMutation.mutateAsync(deletingSale.id);
+        setIsDeleteDialogOpen(false);
+        setDeletingSale(null);
+        toast.success('Sale data deleted successfully');
+      } catch (error) {
+        console.error('Failed to delete sale:', error);
+      }
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setIsDeleteDialogOpen(false);
+    setDeletingSale(null);
+  };
+
+  // Check if user can delete a sale
+  const canDeleteSale = (sale: Sale) => {
+    if (user?.profile?.role === 'admin') {
+      return true; // Admin can delete all sales
+    }
+    // Branch managers can only delete sales from their own branch
+    return user?.profile?.branch_id === sale.branch_id;
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -159,7 +206,7 @@ export default function Sales() {
             <CardContent className="space-y-4">
               <div className="flex flex-col lg:flex-row gap-4">
                 {/* Left side: Search and Date Range */}
-                <div className="flex flex-col sm:flex-row gap-4 flex-1">
+                <div className="flex flex-col sm:flex-row items-baseline gap-4 flex-1">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                     <Input
@@ -236,7 +283,7 @@ export default function Sales() {
                       <TableHead>Customer</TableHead>
                       <TableHead>Total Amount</TableHead>
                       <TableHead className="w-[5%]">Receipt</TableHead>
-                      <TableHead className="w-[5%]">Actions</TableHead>
+                      <TableHead className="w-[10%]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -251,6 +298,11 @@ export default function Sales() {
                         <TableCell>
                           <Badge variant="outline">
                             {sale.branches?.name || 'Unknown'}
+                            {sale.branches?.is_active === false && (
+                              <span className="text-red-700 text-xs ml-1">
+                                (Inactive)
+                              </span>
+                            )}
                           </Badge>
                         </TableCell>
                         <TableCell className="">
@@ -269,13 +321,25 @@ export default function Sales() {
                           <ReceiptGenerator sale={sale} />
                         </TableCell>
                         <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEdit(sale)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(sale)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            {canDeleteSale(sale) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDelete(sale)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -350,6 +414,50 @@ export default function Sales() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={isDeleteDialogOpen}
+        onOpenChange={setIsDeleteDialogOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Sale</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this sale? This action cannot be
+              undone.
+              {deletingSale && (
+                <div className="mt-2 p-2 bg-gray-50 rounded">
+                  <strong>Sale Details:</strong>
+                  <br />
+                  Date:{' '}
+                  {deletingSale.sale_date
+                    ? format(
+                        new Date(deletingSale.sale_date),
+                        'MMM dd, yyyy HH:mm'
+                      )
+                    : 'N/A'}
+                  <br />
+                  Amount: {currentOrganization?.currency || 'GH₵'}{' '}
+                  {deletingSale.total_amount?.toFixed(2) || '0.00'}
+                </div>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={deleteSaleMutation.isPending}
+            >
+              {deleteSaleMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

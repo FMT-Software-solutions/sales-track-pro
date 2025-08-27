@@ -10,6 +10,7 @@ export type Sale = Database['public']['Tables']['sales']['Row'] & {
     name: string;
     location: string;
     contact: string | null;
+    is_active: boolean;
   };
   sale_line_items?: SaleLineItem[];
   // Keep old property for backward compatibility during transition
@@ -28,6 +29,7 @@ export type Expense = Database['public']['Tables']['expenses']['Row'] & {
     name: string;
     location: string;
     contact: string | null;
+    is_active: boolean;
   };
   created_by_profile?: {
     id: string;
@@ -144,7 +146,8 @@ export function useSales(
           branches (
             name,
             location,
-            contact
+            contact,
+            is_active
           ),
           sale_line_items (
             id,
@@ -448,6 +451,24 @@ export function useUpdateSale() {
   });
 }
 
+export function useDeleteSale() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
 // Sale Line Items (junction table)
 export function useSaleLineItems(saleId: string) {
   return useQuery({
@@ -586,7 +607,8 @@ export function useExpenses(
           branches (
             name,
             location,
-            contact
+            contact,
+            is_active
           ),
           created_by_profile:profiles!created_by (
             id,
@@ -667,6 +689,24 @@ export function useUpdateExpense() {
         .single();
       if (error) throw error;
       return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+  });
+}
+
+export function useDeleteExpense() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('expenses')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
