@@ -110,7 +110,9 @@ function App() {
           <Route
             path="/users"
             element={
-              <ProtectedRoute allowedRoles={['owner', 'admin', 'branch_manager']}>
+              <ProtectedRoute
+                allowedRoles={['owner', 'admin', 'branch_manager']}
+              >
                 <OrganizationProvider>
                   <AppLayout>
                     <UserManagement />
@@ -134,7 +136,9 @@ function App() {
           <Route
             path="/activities"
             element={
-              <ProtectedRoute allowedRoles={['owner', 'admin', 'branch_manager']}>
+              <ProtectedRoute
+                allowedRoles={['owner', 'admin', 'branch_manager', 'auditor']}
+              >
                 <OrganizationProvider>
                   <AppLayout>
                     <Activities />

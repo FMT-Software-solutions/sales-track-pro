@@ -58,10 +58,11 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardPenLine, History, Search, XCircle } from 'lucide-react';
+import { ClipboardPenLine, History, Search, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatActivityValues } from '@/utils/activityFormatters';
+import { cn } from '@/lib/utils';
 
 export default function Sales() {
   const { user } = useAuthStore();
@@ -74,7 +75,13 @@ export default function Sales() {
   } = useDebouncedSearch('', 500);
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
-  const { canCorrectSales, canVoidSales, canViewAllData } = useRoleCheck();
+  const {
+    canCorrectSales,
+    canEditSales,
+    canVoidSales,
+    canViewAllData,
+    canCreateSales,
+  } = useRoleCheck();
 
   // Initialize branch when user and branches data are available
   useEffect(() => {
@@ -232,7 +239,10 @@ export default function Sales() {
   // Check if user can perform actions on a sale
   const canCorrectThisSale = (sale: Sale) => {
     if (!canCorrectSales()) return false;
-    return sale.is_active !== false;
+
+    if (canEditSales()) return true;
+
+    return sale.is_active !== false && sale.created_by === user?.id;
   };
 
   const canVoidThisSale = (sale: Sale) => {
@@ -250,26 +260,38 @@ export default function Sales() {
         </p>
       </div>
 
-      <Tabs defaultValue="record" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="record">Record Sale</TabsTrigger>
+      <Tabs
+        defaultValue={canCreateSales() ? 'record' : 'entries'}
+        className="space-y-6"
+      >
+        <TabsList
+          className={cn(
+            'grid w-ful',
+            canCreateSales() ? 'grid-cols-3' : 'grid-cols-2'
+          )}
+        >
+          {canCreateSales() && (
+            <TabsTrigger value="record">Record Sale</TabsTrigger>
+          )}
           <TabsTrigger value="entries">Sales Entries</TabsTrigger>
           <TabsTrigger value="items">Sale Items</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="record">
-          <Card>
-            <CardHeader>
-              <CardTitle>Record New Sale</CardTitle>
-              <CardDescription>
-                Enter details for a new sale transaction.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <MultipleSaleForm onSuccess={() => setPage(1)} />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {canCreateSales() && (
+          <TabsContent value="record">
+            <Card>
+              <CardHeader>
+                <CardTitle>Record New Sale</CardTitle>
+                <CardDescription>
+                  Enter details for a new sale transaction.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MultipleSaleForm onSuccess={() => setPage(1)} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="entries" className="space-y-6">
           <Card>
@@ -420,7 +442,7 @@ export default function Sales() {
                                 className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2"
                                 title="Remove Sale"
                               >
-                                <XCircle className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             )}
                             <Button

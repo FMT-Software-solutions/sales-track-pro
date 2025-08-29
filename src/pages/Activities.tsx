@@ -40,6 +40,7 @@ import { useActivityLogs, useBranches } from '@/hooks/queries';
 import { useAuth } from '@/hooks/useAuth';
 import { formatActivityValues } from '@/utils/activityFormatters';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 
 const ACTIVITY_TYPE_COLORS = {
   create: 'bg-green-100 text-green-800',
@@ -68,6 +69,7 @@ const ENTITY_TYPE_LABELS = {
 export default function Activities() {
   const { user } = useAuth();
   const { currentOrganization } = useOrganization();
+  const { isAuditor } = useRoleCheck();
   const [filters, setFilters] = useState({
     branchId: 'all',
     entityType: 'all',
@@ -103,6 +105,8 @@ export default function Activities() {
       refetch();
     }
   }, [filters, dateRange, currentOrganization?.id, refetch]);
+
+  const userBranches = branches?.filter((branch) => branch.is_active);
 
   const handleFilterChange = (key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -167,6 +171,20 @@ export default function Activities() {
 
   const getEntityTypeLabel = (type: string) => {
     return ENTITY_TYPE_LABELS[type as keyof typeof ENTITY_TYPE_LABELS] || type;
+  };
+
+  // Filter entity types for auditors
+  const getAvailableEntityTypes = () => {
+    if (isAuditor()) {
+      // Auditors can only see sales, expenses, products, and expense categories
+      return {
+        sale: ENTITY_TYPE_LABELS.sale,
+        expense: ENTITY_TYPE_LABELS.expense,
+        product: ENTITY_TYPE_LABELS.product,
+        expense_category: ENTITY_TYPE_LABELS.expense_category,
+      };
+    }
+    return ENTITY_TYPE_LABELS;
   };
 
   if (error) {
@@ -567,7 +585,7 @@ export default function Activities() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All branches</SelectItem>
-                  {branches?.map((branch) => (
+                  {userBranches?.map((branch) => (
                     <SelectItem key={branch.id} value={branch.id}>
                       {branch.name}
                     </SelectItem>
@@ -589,7 +607,7 @@ export default function Activities() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All entities</SelectItem>
-                  {Object.entries(ENTITY_TYPE_LABELS).map(([key, label]) => (
+                  {Object.entries(getAvailableEntityTypes()).map(([key, label]) => (
                     <SelectItem key={key} value={key}>
                       {label}
                     </SelectItem>

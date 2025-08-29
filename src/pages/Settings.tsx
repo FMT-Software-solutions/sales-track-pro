@@ -37,7 +37,7 @@ export function Settings() {
     setCurrentOrganization,
     userOrganizations,
   } = useOrganization();
-  const { canViewAllData } = useRoleCheck();
+  const { canManageAllData } = useRoleCheck();
   const [orgName, setOrgName] = useState(currentOrganization?.name || '');
 
   const [orgEmail, setOrgEmail] = useState(currentOrganization?.email || '');
@@ -152,14 +152,14 @@ export function Settings() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList
           className={`grid w-full ${
-            canViewAllData() ? 'grid-cols-4' : 'grid-cols-1'
+            canManageAllData() ? 'grid-cols-4' : 'grid-cols-1'
           }`}
         >
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
+          <RoleGuard allowedRoles={['owner', 'admin']}>
             <TabsTrigger value="organization">Organization</TabsTrigger>
           </RoleGuard>
-          <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
+          <RoleGuard allowedRoles={['owner', 'admin']}>
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
           </RoleGuard>
           <RoleGuard allowedRoles={['owner', 'admin']}>
@@ -207,11 +207,7 @@ export function Settings() {
                   <Label htmlFor="role">Role</Label>
                   <div className="flex items-center space-x-2">
                     <Badge
-                      variant={
-                        canViewAllData()
-                          ? 'default'
-                          : 'secondary'
-                      }
+                      variant={canManageAllData() ? 'default' : 'secondary'}
                     >
                       <Shield className="mr-1 h-3 w-3" />
                       {user?.profile?.role?.replace('_', ' ').toUpperCase()}
@@ -261,14 +257,14 @@ export function Settings() {
                 {userOrganizations?.map((userOrg) => (
                   <div
                     key={userOrg.id}
-                    className="flex items-center justify-between p-3 border rounded-lg"
+                    className="flex items-baseline justify-between p-3 border rounded-lg"
                   >
                     <div>
                       <p className="font-medium">
                         {userOrg.organizations?.name}
                       </p>
-                      <p className="text-sm text-muted-foreground">
-                        {userOrg.role}
+                      <p className="text-xs text-center text-muted-foreground my-1 p-1 border rounded-full">
+                        {userOrg.role.replace('_', ' ').toUpperCase()}
                       </p>
                     </div>
                     {userOrg.organizations?.id === currentOrganization?.id && (
@@ -281,7 +277,7 @@ export function Settings() {
           </div>
         </TabsContent>
 
-        <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
+        <RoleGuard allowedRoles={['owner', 'admin']}>
           <TabsContent value="organization" className="space-y-6">
             {currentOrganization && (
               <Card>
@@ -380,7 +376,7 @@ export function Settings() {
           </TabsContent>
         </RoleGuard>
 
-        <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
+        <RoleGuard allowedRoles={['owner', 'admin']}>
           <TabsContent value="preferences" className="space-y-6">
             <Card>
               <CardHeader>

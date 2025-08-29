@@ -44,11 +44,14 @@ export function useRoleCheck() {
   // Permission level helpers
   const canManageAllData = () => hasAnyRole(['owner', 'admin']);
   const canViewAllData = () => hasAnyRole(['owner', 'admin', 'auditor']);
-  const canManageBranchData = () => hasAnyRole(['owner', 'admin', 'branch_manager']);
-  const canCorrectSales = () => hasAnyRole(['owner', 'admin', 'auditor']);
+  const canManageBranchData = () =>
+    hasAnyRole(['owner', 'admin', 'branch_manager']);
+  const canCorrectSales = () =>
+    hasAnyRole(['owner', 'admin', 'branch_manager', 'sales_person']);
   const canVoidSales = () => hasAnyRole(['owner', 'admin', 'branch_manager']);
   const canClosePeriods = () => hasAnyRole(['owner', 'admin']);
-  const canCreateSales = () => hasAnyRole(['owner', 'admin', 'branch_manager', 'sales_person']);
+  const canCreateSales = () =>
+    hasAnyRole(['owner', 'admin', 'branch_manager', 'sales_person']);
   const canEditSales = () => hasAnyRole(['owner', 'admin', 'branch_manager']);
   const canDeleteSales = () => hasAnyRole(['owner', 'admin']);
 

@@ -40,11 +40,14 @@ import {
 import { SalesItemForm } from '@/components/forms/SalesItemForm';
 import { Edit, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRoleCheck } from '../auth/RoleGuard';
 
 export function SalesItemsManager() {
   const { currentOrganization } = useOrganization();
   const { data: salesItems = [] } = useSalesItems(currentOrganization?.id);
   const deleteSalesItem = useDeleteSalesItem();
+  const { canCreateSales } = useRoleCheck();
+
   const {
     searchValue,
     debouncedSearchValue,
@@ -107,23 +110,26 @@ export function SalesItemsManager() {
               Manage your sales items and their prices.
             </CardDescription>
           </div>
-          <Dialog
-            open={isCreateDialogOpen}
-            onOpenChange={setIsCreateDialogOpen}
-          >
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Item
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Sales Item</DialogTitle>
-              </DialogHeader>
-              <SalesItemForm onSuccess={handleCreateSuccess} />
-            </DialogContent>
-          </Dialog>
+          {canCreateSales() && (
+            <Dialog
+              open={isCreateDialogOpen}
+              onOpenChange={setIsCreateDialogOpen}
+            >
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Item
+                </Button>
+              </DialogTrigger>
+
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Sales Item</DialogTitle>
+                </DialogHeader>
+                <SalesItemForm onSuccess={handleCreateSuccess} />
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </CardHeader>
       <CardContent>

@@ -73,6 +73,7 @@ export type ActivityLog = Database['public']['Tables']['activities_log']['Row'] 
   branch?: {
     name: string;
     location: string;
+    is_active: boolean;
   };
 };
 
@@ -1487,7 +1488,8 @@ export function useActivityLogs(
           ),
           branch:branches!branch_id (
             name,
-            location
+            location,
+            is_active
           )
         `
         )
@@ -1500,6 +1502,11 @@ export function useActivityLogs(
       // Apply role-based filtering
       if (!canUserViewAllData(user?.profile?.role) && user?.profile?.branch_id) {
         query = query.eq('branch_id', user.profile.branch_id);
+      }
+
+      // Auditor-specific filtering: only sales and expenses activities
+      if (user?.profile?.role === 'auditor') {
+        query = query.in('entity_type', ['sale', 'expense', 'product', 'expense_category']);
       }
 
       if (branchId) {
@@ -1529,7 +1536,18 @@ export function useActivityLogs(
       const { data, error } = await query;
 
       if (error) throw error;
-      return data as ActivityLog[];
+      
+      // Filter out logs from inactive branches
+      const filteredData = data?.filter(log => {
+        // If branch info is available, check if it's active
+        if (log.branch && typeof log.branch === 'object' && 'is_active' in log.branch) {
+          return log.branch.is_active;
+        }
+        // If no branch info or branch_id is null, include the log
+        return true;
+      }) || [];
+      
+      return filteredData as ActivityLog[];
     },
     enabled: !!organizationId,
   });

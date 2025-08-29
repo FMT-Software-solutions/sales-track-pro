@@ -81,20 +81,27 @@ export default function UserManagement() {
   const { currentOrganization } = useOrganization();
   const queryClient = useQueryClient();
   const createActivityLog = useCreateActivityLog();
-  const { getRoleDisplayName, getRoleBadgeColor, canManageAllData, canManageBranchData, isBranchManager } = useRoleCheck();
+  const {
+    getRoleDisplayName,
+    getRoleBadgeColor,
+    canManageAllData,
+    canManageBranchData,
+    isBranchManager,
+    isOwner,
+  } = useRoleCheck();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [createForm, setCreateForm] = useState<CreateUserForm>({
     email: '',
     fullName: '',
-    role: 'admin',
+    role: 'sales_person',
     branchId: undefined,
   });
   const [editForm, setEditForm] = useState<CreateUserForm>({
     email: '',
     fullName: '',
-    role: 'admin',
+    role: 'sales_person',
     branchId: undefined,
   });
   const [tempPassword, setTempPassword] = useState<string | null>(null);
@@ -105,7 +112,12 @@ export default function UserManagement() {
 
   // Fetch users
   const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['users', currentOrganization?.id, profile?.role, profile?.branch_id],
+    queryKey: [
+      'users',
+      currentOrganization?.id,
+      profile?.role,
+      profile?.branch_id,
+    ],
     queryFn: async () => {
       if (!currentOrganization) {
         throw new Error('User not associated with any organization');
@@ -138,7 +150,10 @@ export default function UserManagement() {
         profilesQuery = profilesQuery.eq('branch_id', profile.branch_id);
       }
 
-      const { data: profilesData, error: profilesError } = await profilesQuery.order('full_name');
+      const {
+        data: profilesData,
+        error: profilesError,
+      } = await profilesQuery.order('full_name');
 
       if (profilesError) throw profilesError;
 
@@ -209,10 +224,12 @@ export default function UserManagement() {
         // Get branch name if branch_id is provided
         let branchName = null;
         if (userData.branchId) {
-          const selectedBranch = branches?.find(b => b.id === userData.branchId);
+          const selectedBranch = branches?.find(
+            (b) => b.id === userData.branchId
+          );
           branchName = selectedBranch?.name || null;
         }
-        
+
         await createActivityLog.mutateAsync({
           organization_id: currentOrganization.id,
           branch_id: userData.branchId || null,
@@ -226,12 +243,12 @@ export default function UserManagement() {
             full_name: userData.fullName,
             role: userData.role,
             branch_id: userData.branchId,
-            branch_name: branchName
+            branch_name: branchName,
           },
           metadata: {
             email: userData.email,
-            role: userData.role
-          }
+            role: userData.role,
+          },
         });
       }
 
@@ -245,7 +262,7 @@ export default function UserManagement() {
       setCreateForm({
         email: '',
         fullName: '',
-        role: 'admin',
+        role: 'sales_person',
         branchId: undefined,
       });
       toast.success('User created successfully!');
@@ -261,10 +278,12 @@ export default function UserManagement() {
       // Get user data before deletion for logging (including branch name)
       const { data: userData } = await supabase
         .from('profiles')
-        .select(`
+        .select(
+          `
           *,
           branches(name)
-        `)
+        `
+        )
         .eq('id', userId)
         .single();
 
@@ -293,9 +312,9 @@ export default function UserManagement() {
         // Enhance old values with branch name for better display
         const enhancedOldValues = {
           ...userData,
-          branch_name: userData.branches?.name || null
+          branch_name: userData.branches?.name || null,
         };
-        
+
         await createActivityLog.mutateAsync({
           organization_id: currentOrganization.id,
           branch_id: userData.branch_id,
@@ -307,8 +326,8 @@ export default function UserManagement() {
           old_values: enhancedOldValues,
           metadata: {
             email: userData.email,
-            role: userData.role
-          }
+            role: userData.role,
+          },
         });
       }
 
@@ -341,8 +360,9 @@ export default function UserManagement() {
         .single();
 
       // If role is being changed to admin or auditor, automatically remove branch assignment
-      const branchId =
-        ['admin', 'auditor'].includes(userData.role || '') ? null : userData.branchId || null;
+      const branchId = ['admin', 'auditor'].includes(userData.role || '')
+        ? null
+        : userData.branchId || null;
 
       const { data: updatedData, error } = await supabase
         .from('profiles')
@@ -352,10 +372,12 @@ export default function UserManagement() {
           branch_id: branchId,
         })
         .eq('id', userId)
-        .select(`
+        .select(
+          `
           *,
           branches(name)
-        `)
+        `
+        )
         .single();
 
       if (error) throw error;
@@ -365,13 +387,13 @@ export default function UserManagement() {
         // Enhance old and new values with branch names for better display
         const enhancedOldValues = {
           ...oldUserData,
-          branch_name: oldUserData.branches?.name || null
+          branch_name: oldUserData.branches?.name || null,
         };
         const enhancedNewValues = {
           ...updatedData,
-          branch_name: updatedData.branches?.name || null
+          branch_name: updatedData.branches?.name || null,
         };
-        
+
         await createActivityLog.mutateAsync({
           organization_id: currentOrganization.id,
           branch_id: updatedData.branch_id,
@@ -384,8 +406,8 @@ export default function UserManagement() {
           new_values: enhancedNewValues,
           metadata: {
             email: updatedData.email,
-            role: updatedData.role
-          }
+            role: updatedData.role,
+          },
         });
       }
 
@@ -409,10 +431,12 @@ export default function UserManagement() {
       // Get old user data for activity logging (including branch name)
       const { data: oldUserData } = await supabase
         .from('profiles')
-        .select(`
+        .select(
+          `
           *,
           branches(name)
-        `)
+        `
+        )
         .eq('id', userId)
         .single();
 
@@ -443,9 +467,9 @@ export default function UserManagement() {
         // Enhance old values with branch name for better display
         const enhancedOldValues = {
           ...oldUserData,
-          branch_name: oldUserData.branches?.name || null
+          branch_name: oldUserData.branches?.name || null,
         };
-        
+
         await createActivityLog.mutateAsync({
           organization_id: currentOrganization.id,
           branch_id: oldUserData.branch_id,
@@ -457,8 +481,8 @@ export default function UserManagement() {
           old_values: enhancedOldValues,
           metadata: {
             email: oldUserData.email,
-            action: 'password_regeneration'
-          }
+            action: 'password_regeneration',
+          },
         });
       }
 
@@ -506,8 +530,6 @@ export default function UserManagement() {
     }
   };
 
-
-
   const handleRegeneratePassword = (userId: string) => {
     regeneratePasswordMutation.mutate(userId);
   };
@@ -538,6 +560,23 @@ export default function UserManagement() {
     setPasswordCopied(false);
   };
 
+  // Helper function to determine if action buttons should be shown for a user
+  const canShowActionButtons = (targetUser: User) => {
+    // Users cannot see action buttons for themselves
+    if (targetUser.id === currentUser?.id) return false;
+    
+    // No action buttons for owner users
+    if (targetUser.role === 'owner') return false;
+    
+    // Only owners can manage admin users
+    if (targetUser.role === 'admin' && profile?.role !== 'owner') return false;
+    
+    // Admin users cannot see action buttons for other admin users
+    if (targetUser.role === 'admin' && profile?.role === 'admin') return false;
+    
+    return true;
+  };
+
   // Check if user has access to user management
   if (!canManageBranchData()) {
     return (
@@ -545,7 +584,8 @@ export default function UserManagement() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              Access denied. Only administrators and branch managers can manage users.
+              Access denied. Only administrators and branch managers can manage
+              users.
             </p>
           </CardContent>
         </Card>
@@ -664,8 +704,9 @@ export default function UserManagement() {
                         ...createForm,
                         role: value,
                         // Clear branch assignment when role doesn't require branch
-                        branchId:
-                          ['admin', 'auditor'].includes(value) ? undefined : createForm.branchId,
+                        branchId: ['admin', 'auditor'].includes(value)
+                          ? undefined
+                          : createForm.branchId,
                       })
                     }
                   >
@@ -675,20 +716,22 @@ export default function UserManagement() {
                     <SelectContent>
                       {canManageAllData() && (
                         <>
-                          <SelectItem value="admin">Admin</SelectItem>
+                          {isOwner() && (
+                            <SelectItem value="admin">Admin</SelectItem>
+                          )}
                           <SelectItem value="auditor">Auditor</SelectItem>
                           <SelectItem value="branch_manager">
                             Branch Manager
                           </SelectItem>
                         </>
                       )}
-                      <SelectItem value="sales_person">
-                        Sales Person
-                      </SelectItem>
+                      <SelectItem value="sales_person">Sales Person</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {['branch_manager', 'sales_person'].includes(createForm.role) && (
+                {['branch_manager', 'sales_person'].includes(
+                  createForm.role
+                ) && (
                   <div>
                     <Label htmlFor="branch">
                       Branch <span className="text-red-500">*</span>
@@ -750,9 +793,7 @@ export default function UserManagement() {
                   <div className="space-y-2 flex-1">
                     <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
                       <h3 className="font-semibold">{user.full_name}</h3>
-                      <Badge
-                        className={getRoleBadgeColor(user.role)}
-                      >
+                      <Badge className={getRoleBadgeColor(user.role)}>
                         {getRoleDisplayName(user.role)}
                       </Badge>
                     </div>
@@ -766,8 +807,8 @@ export default function UserManagement() {
                     )}
                   </div>
                   <div className="flex flex-col md:flex-row justify-center items-baseline space-x-2 space-y-1">
-                    {/* Hide edit button for owner users and for logged-in user viewing themselves */}
-                    {user.role !== 'owner' && user.id !== currentUser?.id && (
+                    {/* Edit button visibility based on role hierarchy */}
+                    {canShowActionButtons(user) && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -776,8 +817,8 @@ export default function UserManagement() {
                         <Edit className="h-4 w-4" />
                       </Button>
                     )}
-                    {/* Hide regenerate password for owner users and for logged-in user viewing themselves */}
-                    {user.role !== 'owner' && user.id !== currentUser?.id && (
+                    {/* Regenerate password button visibility based on role hierarchy */}
+                    {canShowActionButtons(user) && (
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button
@@ -795,8 +836,8 @@ export default function UserManagement() {
                               Regenerate Password
                             </AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to regenerate the password for
-                              "{user.full_name}"? This will invalidate their
+                              Are you sure you want to regenerate the password
+                              for "{user.full_name}"? This will invalidate their
                               current password and they will need to use the new
                               temporary password to log in.
                             </AlertDialogDescription>
@@ -812,36 +853,37 @@ export default function UserManagement() {
                         </AlertDialogContent>
                       </AlertDialog>
                     )}
-                    {/* Hide delete button for owner users and for logged-in user viewing themselves */}
-                    {user.role !== 'owner' && user.id !== currentUser?.id && (
+                    {/* Delete button visibility based on role hierarchy */}
+                    {canShowActionButtons(user) && (
                       <AlertDialog>
-                         <AlertDialogTrigger asChild>
-                           <Button
-                             variant="outline"
-                             size="sm"
-                             disabled={deleteUserMutation.isPending}
-                           >
-                             <Trash2 className="h-4 w-4" />
-                           </Button>
-                         </AlertDialogTrigger>
-                         <AlertDialogContent>
-                           <AlertDialogHeader>
-                             <AlertDialogTitle>Delete User</AlertDialogTitle>
-                             <AlertDialogDescription>
-                               Are you sure you want to delete user "{user.full_name}"? This action cannot be undone.
-                             </AlertDialogDescription>
-                           </AlertDialogHeader>
-                           <AlertDialogFooter>
-                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                             <AlertDialogAction
-                               onClick={() => deleteUserMutation.mutate(user.id)}
-                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                             >
-                               Delete
-                             </AlertDialogAction>
-                           </AlertDialogFooter>
-                         </AlertDialogContent>
-                       </AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={deleteUserMutation.isPending}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete user "
+                              {user.full_name}"? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => deleteUserMutation.mutate(user.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     )}
                   </div>
                 </div>
@@ -894,7 +936,9 @@ export default function UserManagement() {
                     ...editForm,
                     role: value,
                     // Clear branch assignment when role doesn't require branch
-                    branchId: ['admin', 'auditor'].includes(value) ? undefined : editForm.branchId,
+                    branchId: ['admin', 'auditor'].includes(value)
+                      ? undefined
+                      : editForm.branchId,
                   })
                 }
               >
@@ -904,9 +948,13 @@ export default function UserManagement() {
                 <SelectContent>
                   {canManageAllData() && (
                     <>
-                      <SelectItem value="admin">Admin</SelectItem>
+                      {isOwner() && (
+                        <SelectItem value="admin">Admin</SelectItem>
+                      )}
                       <SelectItem value="auditor">Auditor</SelectItem>
-                      <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                      <SelectItem value="branch_manager">
+                        Branch Manager
+                      </SelectItem>
                     </>
                   )}
                   <SelectItem value="sales_person">Sales Person</SelectItem>

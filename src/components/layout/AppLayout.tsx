@@ -31,14 +31,19 @@ const navigation = [
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Activities', href: '/activities', icon: Activity, role: 'manager' },
   { name: 'User Management', href: '/users', icon: Users, role: 'admin' },
-  { name: 'Settings', href: '/settings', icon: Settings },
+  { name: 'Profile & Settings', href: '/settings', icon: Settings },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
-  const { canManageAllData, canManageBranchData } = useRoleCheck();
+  const {
+    canManageAllData,
+    canManageBranchData,
+    canViewAllData,
+    isBranchManager,
+  } = useRoleCheck();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSignOut = async () => {
@@ -56,14 +61,13 @@ export function AppLayout({ children }: AppLayoutProps) {
     window.location.reload();
   };
 
-  const filteredNavigation = navigation.filter(
-    (item) => {
-      if (!item.role) return true;
-      if (item.name === 'User Management') return canManageBranchData();
-      if (item.name === 'Activities') return canManageBranchData();
-      return item.role === 'admin' && canManageAllData();
-    }
-  );
+  const filteredNavigation = navigation.filter((item) => {
+    if (!item.role) return true;
+    if (item.name === 'User Management') return canManageBranchData();
+    if (item.name === 'Activities')
+      return canViewAllData() || isBranchManager();
+    return item.role === 'admin' && canManageAllData();
+  });
 
   return (
     <div className="min-h-screen bg-gray-50">

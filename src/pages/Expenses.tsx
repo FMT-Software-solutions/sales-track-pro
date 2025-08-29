@@ -54,11 +54,17 @@ import { Edit, Search, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import type { Expense } from '@/hooks/queries';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 export default function Expenses() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
-  const { canViewAllData, canManageAllData } = useRoleCheck();
+  const {
+    canViewAllData,
+    canManageAllData,
+    isAuditor,
+    isSalesPerson,
+  } = useRoleCheck();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
@@ -91,12 +97,11 @@ export default function Expenses() {
   const deleteExpenseMutation = useDeleteExpense();
 
   // For non-admin users, automatically set their branch and prevent changing it
-  const effectiveBranchId =
-    canViewAllData()
-      ? selectedBranch === 'all'
-        ? undefined
-        : selectedBranch
-      : user?.profile?.branch_id;
+  const effectiveBranchId = canViewAllData()
+    ? selectedBranch === 'all'
+      ? undefined
+      : selectedBranch
+    : user?.profile?.branch_id;
 
   const { data: expenses = [] } = useExpenses(
     effectiveBranchId || undefined,
@@ -178,6 +183,7 @@ export default function Expenses() {
     }
     // Branch managers can only delete expenses from their own branch
     return (
+      isSalesPerson() &&
       user?.profile?.branch_id === expense.branch_id &&
       user.id === expense.created_by
     );
@@ -192,11 +198,21 @@ export default function Expenses() {
         </p>
       </div>
 
-      <Tabs defaultValue="record" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="record">
-            Record <span className="hidden md:inline md:ml-1">Expense</span>
-          </TabsTrigger>
+      <Tabs
+        defaultValue={isAuditor() ? 'entries' : 'record'}
+        className="w-full"
+      >
+        <TabsList
+          className={cn(
+            'grid w-full',
+            isAuditor() ? 'grid-cols-2' : 'grid-cols-3'
+          )}
+        >
+          {!isAuditor() && (
+            <TabsTrigger value="record">
+              Record <span className="hidden md:inline md:ml-1">Expense</span>
+            </TabsTrigger>
+          )}
 
           <TabsTrigger value="entries">
             <span className="hidden md:inline md:mr-1">Expense</span> Entries
@@ -207,19 +223,21 @@ export default function Expenses() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="record" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Record New Expense</CardTitle>
-              <CardDescription>
-                Enter details for a new expense transaction.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ExpenseForm onSuccess={() => setPage(1)} />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {!isAuditor() && (
+          <TabsContent value="record" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Record New Expense</CardTitle>
+                <CardDescription>
+                  Enter details for a new expense transaction.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ExpenseForm onSuccess={() => setPage(1)} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="entries" className="space-y-4">
           <Card>
@@ -277,10 +295,7 @@ export default function Expenses() {
                       setSelectedBranch(value);
                       setPage(1);
                     }}
-                    disabled={
-                      !canViewAllData() &&
-                      userBranches.length <= 1
-                    }
+                    disabled={!canViewAllData() && userBranches.length <= 1}
                   >
                     <SelectTrigger>
                       <SelectValue
@@ -311,7 +326,7 @@ export default function Expenses() {
                       <TableHead>Category</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Description</TableHead>
-                      <TableHead>Actions</TableHead>
+                      {!isAuditor() && <TableHead>Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -348,27 +363,29 @@ export default function Expenses() {
                           {(expense.amount || 0).toFixed(2)}
                         </TableCell>
                         <TableCell>{expense.description || '-'}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              onClick={() => handleEdit(expense)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {canDeleteExpense(expense) && (
+                        {!isAuditor() && (
+                          <TableCell>
+                            <div className="flex gap-2">
                               <Button
                                 size="icon"
                                 variant="outline"
-                                onClick={() => handleDelete(expense)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleEdit(expense)}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Edit className="h-4 w-4" />
                               </Button>
-                            )}
-                          </div>
-                        </TableCell>
+                              {canDeleteExpense(expense) && (
+                                <Button
+                                  size="icon"
+                                  variant="outline"
+                                  onClick={() => handleDelete(expense)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))}
                     {paginatedExpenses.length === 0 && (

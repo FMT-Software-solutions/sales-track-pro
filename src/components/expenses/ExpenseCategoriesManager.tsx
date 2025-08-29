@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { useExpenseCategories, useDeleteExpenseCategory, ExpenseCategory } from '@/hooks/queries';
+import {
+  useExpenseCategories,
+  useDeleteExpenseCategory,
+  ExpenseCategory,
+} from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import {
@@ -40,22 +44,38 @@ import {
 import { ExpenseCategoryForm } from '@/components/forms/ExpenseCategoryForm';
 import { Edit, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRoleCheck } from '../auth/RoleGuard';
 
 export function ExpenseCategoriesManager() {
+  const { isAuditor } = useRoleCheck();
   const { currentOrganization } = useOrganization();
-  const { data: categories = [] } = useExpenseCategories(currentOrganization?.id);
+  const { data: categories = [] } = useExpenseCategories(
+    currentOrganization?.id
+  );
   const deleteCategory = useDeleteExpenseCategory();
-  const { searchValue, debouncedSearchValue, setSearchValue } = useDebouncedSearch('', 500);
-  const [editCategory, setEditCategory] = useState<ExpenseCategory | null>(null);
+  const {
+    searchValue,
+    debouncedSearchValue,
+    setSearchValue,
+  } = useDebouncedSearch('', 500);
+  const [editCategory, setEditCategory] = useState<ExpenseCategory | null>(
+    null
+  );
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
   // Filter categories by debounced search
-  const filteredCategories = categories.filter((category: ExpenseCategory) =>
-    category.name.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ||
-    (category.description?.toLowerCase().includes(debouncedSearchValue.toLowerCase()) ?? false)
+  const filteredCategories = categories.filter(
+    (category: ExpenseCategory) =>
+      category.name
+        .toLowerCase()
+        .includes(debouncedSearchValue.toLowerCase()) ||
+      (category.description
+        ?.toLowerCase()
+        .includes(debouncedSearchValue.toLowerCase()) ??
+        false)
   );
 
   // Pagination
@@ -74,8 +94,10 @@ export function ExpenseCategoriesManager() {
     try {
       await deleteCategory.mutateAsync(id);
       toast.success('Expense category deleted successfully');
-    } catch (error: unknown) {
-      toast.error((error as Error).message || 'Failed to delete expense category');
+    } catch (error) {
+      toast.error(
+        (error as Error).message || 'Failed to delete expense category'
+      );
     }
   };
 
@@ -99,20 +121,25 @@ export function ExpenseCategoriesManager() {
               Manage your expense categories for better organization.
             </CardDescription>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Category
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Expense Category</DialogTitle>
-              </DialogHeader>
-              <ExpenseCategoryForm onSuccess={handleCreateSuccess} />
-            </DialogContent>
-          </Dialog>
+          {!isAuditor() && (
+            <Dialog
+              open={isCreateDialogOpen}
+              onOpenChange={setIsCreateDialogOpen}
+            >
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Category
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create New Expense Category</DialogTitle>
+                </DialogHeader>
+                <ExpenseCategoryForm onSuccess={handleCreateSuccess} />
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -128,14 +155,16 @@ export function ExpenseCategoriesManager() {
             className="w-full md:w-64"
           />
         </div>
-        
+
         <div className="overflow-x-auto">
           <Table className="min-w-[500px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Description</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {!isAuditor() && (
+                  <TableHead className="text-right">Actions</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -143,41 +172,46 @@ export function ExpenseCategoriesManager() {
                 <TableRow key={category.id}>
                   <TableCell className="font-medium">{category.name}</TableCell>
                   <TableCell>{category.description || '-'}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        onClick={() => handleEdit(category)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button size="icon" variant="outline">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete Expense Category</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to delete "{category.name}"? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDelete(category.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    </div>
-                  </TableCell>
+                  {!isAuditor() && (
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => handleEdit(category)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="outline">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>
+                                Delete Expense Category
+                              </AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to delete "{category.name}
+                                "? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDelete(category.id)}
+                                className="bg-red-600 hover:bg-red-700"
+                              >
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {paginatedCategories.length === 0 && (
@@ -228,7 +262,10 @@ export function ExpenseCategoriesManager() {
               <DialogTitle>Edit Expense Category</DialogTitle>
             </DialogHeader>
             {editCategory && (
-              <ExpenseCategoryForm category={editCategory} onSuccess={handleEditSuccess} />
+              <ExpenseCategoryForm
+                category={editCategory}
+                onSuccess={handleEditSuccess}
+              />
             )}
           </DialogContent>
         </Dialog>
