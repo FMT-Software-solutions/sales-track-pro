@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth';
 import { signOut } from '@/lib/auth';
 import { OrganizationSelector } from '@/components/OrganizationSelector';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import {
   LayoutDashboard,
   Building2,
@@ -15,6 +16,7 @@ import {
   LogOut,
   RefreshCw,
   Users,
+  Activity,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -27,6 +29,7 @@ const navigation = [
   { name: 'Sales', href: '/sales', icon: Plus },
   { name: 'Expenses', href: '/expenses', icon: Minus },
   { name: 'Reports', href: '/reports', icon: FileText },
+  { name: 'Activities', href: '/activities', icon: Activity, role: 'manager' },
   { name: 'User Management', href: '/users', icon: Users, role: 'admin' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
@@ -35,6 +38,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
+  const { canManageAllData, canManageBranchData } = useRoleCheck();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleSignOut = async () => {
@@ -53,7 +57,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   };
 
   const filteredNavigation = navigation.filter(
-    (item) => !item.role || item.role === user?.profile?.role
+    (item) => {
+      if (!item.role) return true;
+      if (item.name === 'User Management') return canManageBranchData();
+      if (item.name === 'Activities') return canManageBranchData();
+      return item.role === 'admin' && canManageAllData();
+    }
   );
 
   return (

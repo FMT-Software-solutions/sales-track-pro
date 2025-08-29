@@ -1,9 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
-import { useSales, useBranches, useDeleteSale, Sale } from '@/hooks/queries';
+import {
+  useSales,
+  useBranches,
+  useVoidSale,
+  useSaleActivityLogs,
+  useLogSaleActivity,
+  Sale,
+} from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import {
   Card,
   CardContent,
@@ -51,59 +58,67 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Edit, Search, Trash2 } from 'lucide-react';
+import { ClipboardPenLine, History, Search, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { formatActivityValues } from '@/utils/activityFormatters';
 
 export default function Sales() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
   const [selectedBranch, setSelectedBranch] = useState<string>('');
-  const [searchValue, setSearchValue] = useState('');
+  const {
+    searchValue,
+    debouncedSearchValue,
+    setSearchValue,
+  } = useDebouncedSearch('', 500);
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
+  const { canCorrectSales, canVoidSales, canViewAllData } = useRoleCheck();
 
   // Initialize branch when user and branches data are available
   useEffect(() => {
     if (user?.profile && branches.length > 0) {
-      if (user.profile.role !== 'admin' && user.profile.branch_id) {
-        // Non-admin users: set to their assigned branch (should be the only one returned)
+      if (!canViewAllData() && user.profile.branch_id) {
+        // Users who cannot view all data: set to their assigned branch (should be the only one returned)
         setSelectedBranch(user.profile.branch_id);
-      } else if (user.profile.role === 'admin' && selectedBranch === '') {
-        // Admin users: set to 'all' if not already set
+      } else if (canViewAllData() && selectedBranch === '') {
+        // Users who can view all data: set to 'all' if not already set
         setSelectedBranch('all');
       }
     }
-  }, [user?.profile, branches, selectedBranch]);
+  }, [user?.profile, branches, selectedBranch, canViewAllData]);
 
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
-  const [editingSale, setEditingSale] = useState<Sale | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [correctingSale, setCorrectingSale] = useState<Sale | null>(null);
+  const [isCorrectionDialogOpen, setIsCorrectionDialogOpen] = useState(false);
+  const [voidingSale, setVoidingSale] = useState<Sale | null>(null);
+  const [isVoidDialogOpen, setIsVoidDialogOpen] = useState(false);
+  const [activityLogSale, setActivityLogSale] = useState<Sale | null>(null);
+  const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 10;
 
-  const deleteSaleMutation = useDeleteSale();
-
-  const { searchValue: debouncedSearchValue } = useDebouncedSearch(
-    searchValue,
-    500
+  const voidSaleMutation = useVoidSale();
+  const logSaleActivity = useLogSaleActivity();
+  const { data: activityLogData = [] } = useSaleActivityLogs(
+    activityLogSale?.id,
+    currentOrganization?.id
   );
 
-  // For non-admin users, automatically set their branch and prevent changing it
-  const effectiveBranchId =
-    user?.profile?.role === 'admin'
-      ? selectedBranch === 'all'
-        ? undefined
-        : selectedBranch
-      : user?.profile?.branch_id;
+  // For users who cannot view all data, automatically set their branch and prevent changing it
+  const effectiveBranchId = canViewAllData()
+    ? selectedBranch === 'all'
+      ? undefined
+      : selectedBranch
+    : user?.profile?.branch_id;
 
   const { data: sales = [] } = useSales(
     effectiveBranchId || undefined,
     dateRange?.from ? dateRange.from.toISOString() : undefined,
     dateRange?.to ? dateRange.to.toISOString() : undefined,
-    currentOrganization?.id
+    currentOrganization?.id,
+    true // Include inactive sales so corrected sales can be viewed and their activity logs accessed
   );
 
   // Since useBranches now returns the correct branches based on user role, we just need to filter for active ones
@@ -111,63 +126,119 @@ export default function Sales() {
 
   // Filter and paginate sales
   const filteredSales = sales.filter((sale) => {
-    const matchesSearch =
-      !debouncedSearchValue ||
-      sale.customer_name
-        ?.toLowerCase()
-        .includes(debouncedSearchValue.toLowerCase()) ||
-      sale.branches?.name
-        ?.toLowerCase()
-        .includes(debouncedSearchValue.toLowerCase());
+    const searchTerm = debouncedSearchValue?.toLowerCase();
 
-    return matchesSearch;
+    let matchesSearch = true;
+
+    if (searchTerm) {
+      matchesSearch =
+        // Search by customer name
+        sale.customer_name?.toLowerCase().includes(searchTerm) ||
+        // Search by branch name
+        sale.branches?.name?.toLowerCase().includes(searchTerm) ||
+        // Search by amount
+        sale.amount?.toString().includes(searchTerm) ||
+        // Search by sale items (product names)
+        sale.sale_line_items?.some((item) =>
+          item.products?.name?.toLowerCase().includes(searchTerm)
+        ) ||
+        // Search by legacy sale items (backward compatibility)
+        sale.sale_items?.some((item) =>
+          item.products?.name?.toLowerCase().includes(searchTerm)
+        ) ||
+        false;
+    }
+
+    // Only show active sales in the main list, but keep all sales in memory for activity log access
+    const isActiveForDisplay = sale.is_active !== false;
+
+    return matchesSearch && isActiveForDisplay;
   });
 
   const totalPages = Math.ceil(filteredSales.length / limit);
   const paginatedSales = filteredSales.slice((page - 1) * limit, page * limit);
 
-  const handleEdit = (sale: Sale) => {
-    setEditingSale(sale);
-    setIsEditDialogOpen(true);
+  const handleCorrect = (sale: Sale) => {
+    if (sale.closed) {
+      toast.error('Cannot correct a sale in a closed period');
+      return;
+    }
+    setCorrectingSale(sale);
+    setIsCorrectionDialogOpen(true);
   };
 
-  const handleDialogClose = () => {
-    setEditingSale(null);
-    setIsEditDialogOpen(false);
+  const handleCorrectionDialogClose = () => {
+    setCorrectingSale(null);
+    setIsCorrectionDialogOpen(false);
   };
 
-  const handleDelete = (sale: Sale) => {
-    setDeletingSale(sale);
-    setIsDeleteDialogOpen(true);
+  const handleVoid = (sale: Sale) => {
+    setVoidingSale(sale);
+    setIsVoidDialogOpen(true);
   };
 
-  const handleDeleteConfirm = async () => {
-    if (deletingSale) {
+  const handleVoidConfirm = async () => {
+    if (voidingSale) {
       try {
-        await deleteSaleMutation.mutateAsync(deletingSale.id);
-        setIsDeleteDialogOpen(false);
-        setDeletingSale(null);
-        toast.success('Sale data deleted successfully');
+        await voidSaleMutation.mutateAsync(voidingSale.id);
+
+        // Log the void activity
+        await logSaleActivity.mutateAsync({
+          saleId: voidingSale.id,
+          organizationId: currentOrganization?.id || '',
+          activityType: 'delete',
+          description: `Sale removed - ${
+            currentOrganization?.currency || 'GH₵'
+          }${voidingSale.amount?.toFixed(2)}${
+            voidingSale.customer_name
+              ? ` for customer: ${voidingSale.customer_name}`
+              : ''
+          }`,
+          oldValues: {
+            is_active: true,
+            amount: voidingSale.amount,
+            customer_name: voidingSale.customer_name,
+            sale_date: voidingSale.sale_date,
+          },
+          newValues: {
+            is_active: false,
+          },
+          metadata: {
+            void_reason: 'Manual remove by user',
+            branch_name: voidingSale.branches?.name,
+          },
+        });
+
+        setIsVoidDialogOpen(false);
+        setVoidingSale(null);
+        toast.success('Sale removed successfully');
       } catch (error) {
-        console.error('Failed to delete sale:', error);
+        console.error('Failed to remove sale:', error);
+        toast.error('Failed to remove sale');
       }
     }
   };
 
-  const handleDeleteCancel = () => {
-    setIsDeleteDialogOpen(false);
-    setDeletingSale(null);
+  const handleVoidCancel = () => {
+    setIsVoidDialogOpen(false);
+    setVoidingSale(null);
   };
 
-  // Check if user can delete a sale
-  const canDeleteSale = (sale: Sale) => {
-    if (user?.profile?.role === 'admin') {
-      return true; // Admin can delete all sales
-    }
-    // Branch managers can only delete their own sales from their assigned branch
-    return (
-      user?.profile?.branch_id === sale.branch_id && user.id === sale.created_by
-    );
+  const handleViewActivityLog = (sale: Sale) => {
+    setActivityLogSale(sale);
+    setIsActivityLogOpen(true);
+  };
+
+  // Check if user can perform actions on a sale
+  const canCorrectThisSale = (sale: Sale) => {
+    if (!canCorrectSales()) return false;
+    return sale.is_active !== false;
+  };
+
+  const canVoidThisSale = (sale: Sale) => {
+    if (!canVoidSales()) return false;
+    if (sale.closed && !canViewAllData()) return false; // Only owners/admins can remove(void) closed sales
+    return sale.is_active !== false;
   };
 
   return (
@@ -214,7 +285,10 @@ export default function Sales() {
                     <Input
                       placeholder="Search sales..."
                       value={searchValue}
-                      onChange={(e) => setSearchValue(e.target.value)}
+                      onChange={(e) => {
+                        setSearchValue(e.target.value);
+                        setPage(1);
+                      }}
                       className="pl-10"
                     />
                   </div>
@@ -263,7 +337,7 @@ export default function Sales() {
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {user?.profile?.role === 'admin' && (
+                      {canViewAllData() && (
                         <SelectItem value="all">All Branches</SelectItem>
                       )}
                       {userBranches.map((branch) => (
@@ -285,7 +359,7 @@ export default function Sales() {
                       <TableHead>Customer</TableHead>
                       <TableHead>Total Amount</TableHead>
                       <TableHead className="w-[5%]">Receipt</TableHead>
-                      <TableHead className="w-[10%]">Actions</TableHead>
+                      <TableHead className="w-[15%]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -316,31 +390,48 @@ export default function Sales() {
                         </TableCell>
                         <TableCell>{sale.customer_name || '-'}</TableCell>
                         <TableCell>
-                          {currentOrganization?.currency || 'GH₵'}{' '}
-                          {sale.total_amount?.toFixed(2) || '0.00'}
+                          <div className="flex items-center gap-2">
+                            {currentOrganization?.currency || 'GH₵'}{' '}
+                            {sale.amount?.toFixed(2) || '0.00'}
+                          </div>
                         </TableCell>
+
                         <TableCell>
                           <ReceiptGenerator sale={sale} />
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(sale)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            {canDeleteSale(sale) && (
+                          <div className="flex gap-1 flex-wrap">
+                            {canCorrectThisSale(sale) && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleDelete(sale)}
-                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => handleCorrect(sale)}
+                                title="Update Sale"
+                                className="px-2"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <ClipboardPenLine className="h-4 w-4" />
                               </Button>
                             )}
+                            {canVoidThisSale(sale) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleVoid(sale)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 px-2"
+                                title="Remove Sale"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewActivityLog(sale)}
+                              title="View History"
+                              className="px-2"
+                            >
+                              <History className="h-4 w-4" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -402,64 +493,308 @@ export default function Sales() {
         </TabsContent>
       </Tabs>
 
-      {/* Edit Sale Dialog */}
-      <Dialog open={isEditDialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Edit Sale</DialogTitle>
+      {/* Sale Correction Dialog */}
+      <Dialog
+        open={isCorrectionDialogOpen}
+        onOpenChange={handleCorrectionDialogClose}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col px-0">
+          <DialogHeader className="flex-shrink-0 px-4">
+            <DialogTitle>Update Sale</DialogTitle>
           </DialogHeader>
-          {editingSale && (
-            <MultipleSaleForm
-              sale={editingSale}
-              onSuccess={handleDialogClose}
-            />
-          )}
+          <div className="flex-1 overflow-y-auto px-4">
+            {correctingSale && (
+              <MultipleSaleForm
+                sale={correctingSale}
+                onSuccess={handleCorrectionDialogClose}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        open={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
-      >
+      {/* Remove Sale Confirmation Dialog */}
+      <AlertDialog open={isVoidDialogOpen} onOpenChange={setIsVoidDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Sale</AlertDialogTitle>
+            <AlertDialogTitle>Remove Sale</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this sale? This action cannot be
+              Are you sure you want to remove this sale? This action cannot be
               undone.
-              {deletingSale && (
+              {voidingSale && (
                 <div className="mt-2 p-2 bg-gray-50 rounded">
                   <strong>Sale Details:</strong>
                   <br />
                   Date:{' '}
-                  {deletingSale.sale_date
+                  {voidingSale.sale_date
                     ? format(
-                        new Date(deletingSale.sale_date),
+                        new Date(voidingSale.sale_date),
                         'MMM dd, yyyy HH:mm'
                       )
                     : 'N/A'}
                   <br />
                   Amount: {currentOrganization?.currency || 'GH₵'}{' '}
-                  {deletingSale.total_amount?.toFixed(2) || '0.00'}
+                  {voidingSale.amount?.toFixed(2) || '0.00'}
+                  <br />
+                  Customer: {voidingSale.customer_name || 'Unknown'}
                 </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleDeleteCancel}>
+            <AlertDialogCancel onClick={handleVoidCancel}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteConfirm}
+              onClick={handleVoidConfirm}
               className="bg-red-600 hover:bg-red-700"
-              disabled={deleteSaleMutation.isPending}
+              disabled={voidSaleMutation.isPending}
             >
-              {deleteSaleMutation.isPending ? 'Deleting...' : 'Delete'}
+              {voidSaleMutation.isPending ? 'Removing...' : 'Remove Sale'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Activity Log Dialog */}
+      <Dialog open={isActivityLogOpen} onOpenChange={setIsActivityLogOpen}>
+        <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
+            <DialogTitle>Sale Activity History</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto p-4">
+            {activityLogSale && (
+              <div className="space-y-6">
+                <div className="p-4 bg-gray-50 rounded">
+                  <h4 className="font-semibold mb-2">Sale Details</h4>
+                  <div className="grid grid-col-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <p
+                        className="text-sm text-gray-600"
+                        title="This is the date this sale was made"
+                      >
+                        Sale Date
+                      </p>
+                      <p className="font-medium">
+                        {format(
+                          new Date(activityLogSale.sale_date),
+                          'MMM dd, yyyy HH:mm'
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Amount</p>
+                      <p className="font-medium">
+                        {currentOrganization?.currency || 'GH₵'}{' '}
+                        {activityLogSale.amount?.toFixed(2)}
+                      </p>
+                    </div>
+                    {activityLogSale.customer_name && (
+                      <div>
+                        <p className="text-sm text-gray-600">Customer</p>
+                        <p className="font-medium">
+                          {activityLogSale.customer_name || 'N/A'}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm text-gray-600">Branch</p>
+                      <p className="font-medium">
+                        {activityLogSale.branches?.name || 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p
+                        className="text-sm text-gray-600"
+                        title="This is the date this sale was recorded"
+                      >
+                        Created Date
+                      </p>
+                      <p className="font-medium">
+                        {activityLogSale.created_at
+                          ? format(
+                              new Date(activityLogSale.created_at),
+                              'MMM dd, yyyy HH:mm'
+                            )
+                          : 'N/A'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Recorded by</p>
+                      <p className="font-medium">
+                        {activityLogSale.created_by_profile?.full_name ||
+                          'Unknown'}
+                      </p>
+                    </div>
+                    {activityLogSale.updated_at && (
+                      <div>
+                        <p className="text-sm text-gray-600">
+                          Last Updated Date
+                        </p>
+                        <p className="font-medium">
+                          {format(
+                            new Date(activityLogSale.updated_at),
+                            'MMM dd, yyyy HH:mm'
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {activityLogSale.last_updated_by_profile && (
+                      <div>
+                        <p className="text-sm text-gray-600">Last Updated by</p>
+                        <p className="font-medium">
+                          {activityLogSale.last_updated_by_profile?.full_name ||
+                            'Unknown'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {activityLogData.length > 0 ? (
+                  <div>
+                    <h4 className="font-semibold mb-4">Activity History</h4>
+                    <div className="space-y-3">
+                      {activityLogData.map((activity: any) => {
+                        const getActivityColor = (type: string) => {
+                          switch (type) {
+                            case 'create':
+                              return 'bg-green-50/20 border-green-100';
+                            case 'update':
+                              return 'bg-blue-50/20 border-blue-100';
+                            case 'delete':
+                              return 'bg-red-50/20 border-red-100';
+                            default:
+                              return 'bg-gray-50/20 border-gray-100';
+                          }
+                        };
+
+                        const getActivityBadgeColor = (type: string) => {
+                          switch (type) {
+                            case 'create':
+                              return 'bg-green-100 text-green-800';
+                            case 'update':
+                              return 'bg-blue-100 text-blue-800';
+                            case 'delete':
+                              return 'bg-red-100 text-red-800';
+                            default:
+                              return 'bg-gray-100 text-gray-800';
+                          }
+                        };
+
+                        delete activity.metadata.original_sale_id;
+
+                        return (
+                          <div
+                            key={activity.id}
+                            className={`p-4 rounded border ${getActivityColor(
+                              activity.activity_type
+                            )}`}
+                          >
+                            <div className="flex justify-between items-start mb-2">
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  className={getActivityBadgeColor(
+                                    activity.activity_type
+                                  )}
+                                >
+                                  {activity.activity_type
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    activity.activity_type.slice(1)}
+                                </Badge>
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {format(
+                                  new Date(activity.created_at),
+                                  'MMM dd, yyyy HH:mm:ss'
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mb-2">
+                              <p className="text-sm font-medium">
+                                {activity.description}
+                              </p>
+                            </div>
+
+                            <div className="flex gap-1">
+                              <p className="text-gray-600">Performed by</p>
+                              <p className="font-medium">
+                                {activity.user_profile?.full_name || 'Unknown'}
+                              </p>
+                            </div>
+
+                            {(activity.old_values || activity.new_values) && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <p className="text-sm font-medium text-gray-700 mb-2">
+                                  Changes:
+                                </p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                  {activity.old_values && (
+                                    <div>
+                                      <p className="text-red-600 font-medium">
+                                        Previous Values:
+                                      </p>
+                                      <div className="text-xs bg-red-50 p-2 rounded mt-1">
+                                        <p className="text-red-700">
+                                          {formatActivityValues(
+                                            activity.old_values,
+                                            activity.entity_type
+                                          )}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {activity.new_values && (
+                                    <div>
+                                      <p className="text-green-600 font-medium">
+                                        New Values:
+                                      </p>
+                                      <div className="text-xs bg-green-50 p-2 rounded mt-1">
+                                        <p className="text-green-700">
+                                          {formatActivityValues(
+                                            activity.new_values,
+                                            activity.entity_type
+                                          )}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {activity.metadata && (
+                              <div className="mt-3 pt-3 border-t border-gray-200">
+                                <p className="text-sm font-medium text-gray-700 mb-2">
+                                  Additional Information:
+                                </p>
+                                <div className="text-xs bg-gray-50 p-2 rounded">
+                                  <p className="text-gray-700">
+                                    {formatActivityValues(activity.metadata)}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-blue-50 rounded">
+                    <p className="text-blue-800 text-sm">
+                      <strong>Note:</strong> No activity history found for this
+                      sale yet.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

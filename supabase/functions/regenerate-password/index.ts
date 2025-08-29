@@ -37,16 +37,16 @@ serve(async (req) => {
       )
     }
 
-    // Check if the user is an admin
+    // Check if the user is an owner, admin or branch_manager
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (profileError || profile?.role !== 'admin') {
+    if (profileError || !['owner', 'admin', 'branch_manager'].includes(profile?.role)) {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized. Admin access required.' }),
+        JSON.stringify({ error: 'Unauthorized. You do not have required permissions to perform this action.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }

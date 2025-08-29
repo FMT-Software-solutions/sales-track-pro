@@ -1,5 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
 
+// Define Json type locally
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
@@ -259,6 +263,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          organization_id: string | null
           role: Database["public"]["Enums"]["user_role"] | null
           updated_at: string | null
         }
@@ -268,6 +273,7 @@ export type Database = {
           email: string
           full_name: string
           id: string
+          organization_id?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           updated_at?: string | null
         }
@@ -277,6 +283,7 @@ export type Database = {
           email?: string
           full_name?: string
           id?: string
+          organization_id?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
           updated_at?: string | null
         }
@@ -286,6 +293,13 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -347,12 +361,12 @@ export type Database = {
           customer_name: string | null
           description: string | null
           id: string
+          is_active: boolean
+          notes: string | null
           organization_id: string | null
           receipt_generated_at: string | null
           sale_date: string
-          total_amount: number | null
           updated_at: string | null
-          last_updated_by: string | null
         }
         Insert: {
           amount: number
@@ -362,12 +376,12 @@ export type Database = {
           customer_name?: string | null
           description?: string | null
           id?: string
+          is_active?: boolean
+          notes?: string | null
           organization_id?: string | null
           receipt_generated_at?: string | null
           sale_date: string
-          total_amount?: number | null
           updated_at?: string | null
-          last_updated_by?: string | null
         }
         Update: {
           amount?: number
@@ -377,12 +391,12 @@ export type Database = {
           customer_name?: string | null
           description?: string | null
           id?: string
+          is_active?: boolean
+          notes?: string | null
           organization_id?: string | null
           receipt_generated_at?: string | null
           sale_date?: string
-          total_amount?: number | null
           updated_at?: string | null
-          last_updated_by?: string | null
         }
         Relationships: [
           {
@@ -397,6 +411,79 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activities_log: {
+        Row: {
+          activity_type: string
+          branch_id: string | null
+          created_at: string | null
+          description: string | null
+          entity_id?: string | null
+          sale_id?: string | null
+          entity_type: string
+          id: string
+          metadata: Json | null
+          new_values: Json | null
+          old_values: Json | null
+          organization_id: string | null
+          user_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activity_type: string
+          branch_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          entity_id?: string | null
+          sale_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          organization_id?: string | null
+          user_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activity_type?: string
+          branch_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          entity_id?: string
+          sale_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+          new_values?: Json | null
+          old_values?: Json | null
+          organization_id?: string | null
+          user_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activities_log_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "activities_log_performed_by_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -447,7 +534,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      user_role: "admin" | "branch_manager"
+      user_role: "owner" | 'admin' | 'branch_manager' | 'auditor' | 'sales_person';
     }
     CompositeTypes: {
       [_ in never]: never
@@ -578,7 +665,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      user_role: ["admin", "branch_manager"],
+      user_role: ["owner", 'admin', 'branch_manager', 'auditor', 'sales_person'],
     },
   },
 } as const

@@ -22,6 +22,7 @@ import {
 } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { UserInfo } from '@/components/ui/user-info';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { Calendar22 } from '@/components/ui/calendar22';
@@ -49,6 +50,7 @@ interface ExpenseFormProps {
 export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
+  const { canViewAllData } = useRoleCheck();
   const { data: branches = [], isLoading } = useBranches(
     currentOrganization?.id
   );
@@ -63,12 +65,11 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
   const [showNewCategoryForm, setShowNewCategoryForm] = React.useState(false);
   const [newCategoryName, setNewCategoryName] = React.useState('');
 
-  const userBranches =
-    user?.profile?.role === 'admin'
-      ? branches.filter((branch) => branch.is_active)
-      : branches.filter(
-          (branch) => branch.is_active && branch.id === user?.profile?.branch_id
-        );
+  const userBranches = canViewAllData()
+    ? branches.filter((branch) => branch.is_active)
+    : branches.filter(
+        (branch) => branch.is_active && branch.id === user?.profile?.branch_id
+      );
 
   const {
     register,
@@ -218,12 +219,17 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
           <Calendar22
             label="Expense Date"
             value={expenseDate}
-            onChange={(date) =>
-              setValue(
-                'expense_date',
-                date ? format(date, 'yyyy-MM-dd HH:mm:ss') : ''
-              )
-            }
+            onChange={(date) => {
+              if (date) {
+                setValue('expense_date', format(date, 'yyyy-MM-dd HH:mm:ss'));
+              } else {
+                // If date is undefined, set to current date/time to prevent validation errors
+                setValue(
+                  'expense_date',
+                  format(new Date(), 'yyyy-MM-dd HH:mm:ss')
+                );
+              }
+            }}
             id="expense_date"
             includeTime={true}
           />
@@ -244,7 +250,7 @@ export function ExpenseForm({ onSuccess, expense }: ExpenseFormProps) {
             id="amount"
             type="number"
             min="0"
-            step="0.01"
+            step="0.10"
             placeholder="0.00"
             {...register('amount', { valueAsNumber: true })}
           />

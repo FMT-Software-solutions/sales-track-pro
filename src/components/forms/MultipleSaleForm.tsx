@@ -24,21 +24,25 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  useBranches,
   useProducts,
+  useBranches,
   useCreateSale,
-  useUpdateSale,
+  useCorrectSale,
   useSaleLineItems,
   useCreateSaleLineItem,
+  useUpdateSaleLineItem,
   useDeleteSaleLineItem,
+  useLogSaleActivity,
   type Sale,
 } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { UserInfo } from '@/components/ui/user-info';
 import { toast } from 'sonner';
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { createSaleLineItemSnapshot, createSaleSnapshot, detectSaleChanges, hasAnyChanges, generateSaleActivityTitle } from '@/utils/activityFormatters';
 
 const saleLineItemSchema = z.object({
   id: z.string().optional(),
@@ -50,6 +54,7 @@ const saleLineItemSchema = z.object({
 const saleSchema = z.object({
   branchId: z.string().min(1, 'Please select a branch'),
   customerName: z.string().optional(),
+  notes: z.string().optional(),
   saleDate: z.string().min(1, 'Please select a date'),
   items: z.array(saleLineItemSchema).min(1, 'At least one item is required'),
 });
@@ -64,14 +69,18 @@ interface MultipleSaleFormProps {
 export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
+  const { canViewAllData } = useRoleCheck();
   const { data: branches = [], isLoading } = useBranches(currentOrganization?.id);
   const { data: products = [] } = useProducts(currentOrganization?.id);
   const { data: existingSaleLineItems = [] } = useSaleLineItems(sale?.id || '');
   
   const createSale = useCreateSale();
-  const updateSale = useUpdateSale();
+
+  const correctSale = useCorrectSale();
   const createSaleLineItem = useCreateSaleLineItem();
+  const updateSaleLineItem = useUpdateSaleLineItem();
   const deleteSaleLineItem = useDeleteSaleLineItem();
+  const logSaleActivity = useLogSaleActivity();
 
   // State for managing inline editing and add form
   const [editingIndex, setEditingIndex] = React.useState<number | null>(null);
@@ -82,7 +91,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
     unitPrice: 0
   });
 
-  const userBranches = user?.profile?.role === 'admin'
+  const userBranches = canViewAllData()
     ? branches.filter((branch) => branch.is_active)
     : branches.filter(
         (branch) => branch.is_active && branch.id === user?.profile?.branch_id
@@ -102,6 +111,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
       saleDate: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
       branchId: userBranches.length === 1 ? userBranches[0].id : '',
       customerName: '',
+      notes: '',
       items: [],
     },
   });
@@ -119,6 +129,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         saleDate: sale.sale_date,
         branchId: sale.branch_id,
         customerName: sale.customer_name || '',
+        notes: sale.notes || '',
       };
 
       if (existingSaleLineItems.length > 0) {
@@ -157,11 +168,23 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
 
   const addItem = () => {
     if (newItem.productId) {
-      append({ 
-        productId: newItem.productId, 
-        quantity: newItem.quantity, 
-        unitPrice: newItem.unitPrice 
-      });
+      const currentItems = watch('items');
+      const existingItemIndex = currentItems.findIndex(item => item.productId === newItem.productId);
+      
+      if (existingItemIndex !== -1) {
+        // Product already exists, increase quantity
+        const existingItem = currentItems[existingItemIndex];
+        setValue(`items.${existingItemIndex}.quantity`, existingItem.quantity + newItem.quantity);
+        toast.success(`Increased quantity for ${getProductName(newItem.productId)} by ${newItem.quantity}`);
+      } else {
+        // Product doesn't exist, add new item
+        append({ 
+          productId: newItem.productId, 
+          quantity: newItem.quantity, 
+          unitPrice: newItem.unitPrice 
+        });
+      }
+      
       setNewItem({ productId: '', quantity: 1, unitPrice: 0 });
       setShowAddForm(false);
     }
@@ -213,37 +236,207 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
       const totalAmount = calculateTotal();
 
       if (sale) {
-        // Update existing sale
-        await updateSale.mutateAsync({
-          id: sale.id,
-          branch_id: data.branchId,
-          customer_name: data.customerName || null,
-          sale_date: data.saleDate,
-          amount: totalAmount, // Keep for backward compatibility
-          last_updated_by: user.id,
+        // Create snapshots before making changes
+        const originalSaleSnapshot = createSaleSnapshot({
+          ...sale,
+          sale_line_items: existingSaleLineItems
         });
+        
+        const originalLineItemsSnapshot = createSaleLineItemSnapshot(existingSaleLineItems);
 
-        // Delete existing sale line items
-        for (const existingItem of existingSaleLineItems) {
-          await deleteSaleLineItem.mutateAsync(existingItem.id);
-        }
-
-        // Create new sale line items
-        for (const item of data.items) {
-          await createSaleLineItem.mutateAsync({
-            sale_id: sale.id,
+        // Create preliminary new sale snapshot to detect changes
+        const preliminaryNewSaleSnapshot = createSaleSnapshot({
+          ...sale,
+          amount: totalAmount,
+          customer_name: data.customerName,
+          notes: data.notes,
+          sale_date: data.saleDate,
+          branch_id: data.branchId,
+          branch_name: userBranches.find(b => b.id === data.branchId)?.name,
+          sale_line_items: data.items.map(item => ({
             product_id: item.productId,
+            product_name: products.find(p => p.id === item.productId)?.name,
             quantity: item.quantity,
             unit_price: item.unitPrice,
-          });
+            total_price: item.quantity * item.unitPrice
+          }))
+        });
+
+        // Smart update: compare existing items with new items
+        const existingItemsMap = new Map(existingSaleLineItems.map(item => [item.product_id, item]));
+        const newItemsMap = new Map(data.items.map(item => [item.productId, item]));
+
+        // Track changes for detailed logging
+        const itemChanges = {
+          updated: [] as any[],
+          created: [] as any[],
+          deleted: [] as any[]
+        };
+
+        // Detect item changes without making database updates yet
+        for (const item of data.items) {
+          const existingItem = existingItemsMap.get(item.productId);
+          
+          if (existingItem) {
+            // Check if item values changed
+            if (existingItem.quantity !== item.quantity || existingItem.unit_price !== item.unitPrice) {
+              const oldSnapshot = {
+                id: existingItem.id,
+                product_id: existingItem.product_id,
+                product_name: existingItem.products?.name,
+                quantity: existingItem.quantity,
+                unit_price: existingItem.unit_price,
+                total_price: existingItem.total_price
+              };
+              
+              const newSnapshot = {
+                id: existingItem.id,
+                product_id: item.productId,
+                product_name: products.find(p => p.id === item.productId)?.name,
+                quantity: item.quantity,
+                unit_price: item.unitPrice,
+                total_price: item.quantity * item.unitPrice
+              };
+              
+              itemChanges.updated.push({ old: oldSnapshot, new: newSnapshot });
+            }
+          } else {
+            // New item to be created
+            itemChanges.created.push({
+              product_id: item.productId,
+              product_name: products.find(p => p.id === item.productId)?.name,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              total_price: item.quantity * item.unitPrice
+            });
+          }
         }
 
+        // Check for items to be deleted
+        for (const existingItem of existingSaleLineItems) {
+          if (!newItemsMap.has(existingItem.product_id)) {
+            const deletedSnapshot = {
+              id: existingItem.id,
+              product_id: existingItem.product_id,
+              product_name: existingItem.products?.name,
+              quantity: existingItem.quantity,
+              unit_price: existingItem.unit_price,
+              total_price: existingItem.total_price
+            };
+            
+            itemChanges.deleted.push(deletedSnapshot);
+          }
+        }
+
+        // Detect what changes were made
+        const changes = detectSaleChanges(originalSaleSnapshot, preliminaryNewSaleSnapshot, itemChanges);
+        
+        // Only proceed with updates if there were actual changes
+        if (!hasAnyChanges(changes)) {
+          toast.info('No changes detected - sale not updated');
+          return;
+        }
+
+        // Update sale
+        const updatedSale = await correctSale.mutateAsync({
+          id: sale.id,
+          amount: totalAmount,
+          customer_name: data.customerName || null,
+          notes: data.notes || null,
+          sale_date: data.saleDate,
+          branch_id: data.branchId,
+        });
+
+        // Update or create items (only for items that actually changed)
+        for (const item of data.items) {
+          const existingItem = existingItemsMap.get(item.productId);
+          
+          if (existingItem) {
+            // Update existing item if values changed
+            if (existingItem.quantity !== item.quantity || existingItem.unit_price !== item.unitPrice) {
+              await updateSaleLineItem.mutateAsync({
+                id: existingItem.id,
+                quantity: item.quantity,
+                unit_price: item.unitPrice,
+              });
+            }
+          } else {
+            // Create new item
+            const newLineItem = await createSaleLineItem.mutateAsync({
+              sale_id: updatedSale.id,
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+            });
+            
+            // Update the created item in itemChanges with the actual ID
+            const createdItemIndex = itemChanges.created.findIndex(created => 
+              created.product_id === item.productId
+            );
+            if (createdItemIndex !== -1) {
+              itemChanges.created[createdItemIndex].id = newLineItem.id;
+            }
+          }
+        }
+
+        // Delete items that are no longer in the form
+        for (const existingItem of existingSaleLineItems) {
+          if (!newItemsMap.has(existingItem.product_id)) {
+            await deleteSaleLineItem.mutateAsync(existingItem.id);
+          }
+        }
+
+        // Create new sale snapshot after changes
+        const newSaleSnapshot = createSaleSnapshot({
+          ...updatedSale,
+          amount: totalAmount,
+          customer_name: data.customerName,
+          notes: data.notes,
+          sale_date: data.saleDate,
+          branch_id: data.branchId,
+          branch_name: userBranches.find(b => b.id === data.branchId)?.name,
+          sale_line_items: data.items.map(item => ({
+            product_id: item.productId,
+            product_name: products.find(p => p.id === item.productId)?.name,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+            total_price: item.quantity * item.unitPrice
+          }))
+        });
+
+        // Generate dynamic title based on what changed
+        const activityTitle = generateSaleActivityTitle(
+          changes, 
+          originalSaleSnapshot, 
+          newSaleSnapshot, 
+          currentOrganization?.currency || 'GH₵'
+        );
+
+        // Log the correction activity with detailed snapshots
+        await logSaleActivity.mutateAsync({
+          saleId: updatedSale.id,
+          organizationId: currentOrganization.id,
+          activityType: 'update',
+          description: activityTitle,
+          oldValues: originalSaleSnapshot,
+          newValues: newSaleSnapshot,
+          metadata: {
+            original_sale_id: sale.id,
+            correction_reason: 'Manual correction',
+            item_changes: itemChanges,
+            total_items_before: originalLineItemsSnapshot.length,
+            total_items_after: data.items.length,
+            changes_detected: changes
+          }
+        });
+        
         toast.success('Sale updated successfully');
       } else {
         // Create new sale
         const newSale = await createSale.mutateAsync({
           branch_id: data.branchId,
           customer_name: data.customerName || null,
+          notes: data.notes || null,
           sale_date: data.saleDate,
           amount: totalAmount, // Keep for backward compatibility
           created_by: user.id,
@@ -260,6 +453,29 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
           });
         }
 
+        // Log the creation activity
+        await logSaleActivity.mutateAsync({
+          saleId: newSale.id,
+          organizationId: currentOrganization.id,
+          activityType: 'create',
+          description: `New sale created for ${currentOrganization?.currency || 'GH₵'}${totalAmount.toFixed(2)}${data.customerName ? ` for customer: ${data.customerName}` : ''}`,
+          newValues: {
+            amount: totalAmount,
+            customer_name: data.customerName,
+            sale_date: data.saleDate,
+            branch_id: data.branchId,
+            items: data.items.map(item => ({
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice
+            }))
+          },
+          metadata: {
+            total_items: data.items.length,
+            branch_name: userBranches.find(b => b.id === data.branchId)?.name
+          }
+        });
+
         toast.success('Sale recorded successfully');
       }
 
@@ -268,6 +484,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         saleDate: format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
         branchId: data.branchId,
         customerName: '',
+        notes: '',
         items: [{ productId: '', quantity: 1, unitPrice: 0 }],
       });
 
@@ -408,7 +625,8 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
               </div>
               <div className="flex items-end">
                 <Button 
-                  type="button" 
+                  type="button"
+                   variant="outline" 
                   onClick={addItem} 
                   size="sm"
                   disabled={!newItem.productId}
@@ -575,16 +793,25 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="customerName">Customer Name / Notes</Label>
-        <Textarea
-          {...register('customerName')}
-          placeholder="Enter customer name or additional notes..."
-          rows={3}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="customerName">Customer Name</Label>
+          <Input
+            {...register('customerName')}
+            placeholder="Enter customer name..."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="notes">Notes</Label>
+          <Textarea
+            {...register('notes')}
+            placeholder="Enter additional notes..."
+            rows={3}
+          />
+        </div>
       </div>
 
-      {/* User Information - Only visible to admins */}
+      {/* User Information - Only visible when editing */}
       {sale && (
         <div className="space-y-2">
           <UserInfo
@@ -608,9 +835,9 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         </div>
         <Button
           type="submit"
-          disabled={createSale.isPending || updateSale.isPending}
+          disabled={createSale.isPending || correctSale.isPending}
         >
-          {createSale.isPending || updateSale.isPending
+          {createSale.isPending || correctSale.isPending
             ? 'Saving...'
             : sale
             ? 'Update Sale'

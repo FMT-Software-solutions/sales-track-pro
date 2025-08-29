@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useOrganization } from '../contexts/OrganizationContext';
+import { useCreateActivityLog } from '../hooks/queries';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -45,17 +46,19 @@ import {
   RotateCcwKey,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { UserRole } from '@/lib/auth';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 
 interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'branch_manager';
+  role: UserRole;
   branch_id?: string;
   branches?: { name: string };
   user_organizations?: Array<{
     organization_id: string;
-    role: string;
+    role: UserRole;
     is_active: boolean;
     organizations: { name: string };
   }>;
@@ -69,7 +72,7 @@ interface Branch {
 interface CreateUserForm {
   email: string;
   fullName: string;
-  role: 'admin' | 'branch_manager';
+  role: UserRole;
   branchId?: string;
 }
 
@@ -77,19 +80,21 @@ export default function UserManagement() {
   const { user: currentUser, profile } = useAuth();
   const { currentOrganization } = useOrganization();
   const queryClient = useQueryClient();
+  const createActivityLog = useCreateActivityLog();
+  const { getRoleDisplayName, getRoleBadgeColor, canManageAllData, canManageBranchData, isBranchManager } = useRoleCheck();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [createForm, setCreateForm] = useState<CreateUserForm>({
     email: '',
     fullName: '',
-    role: 'branch_manager',
+    role: 'admin',
     branchId: undefined,
   });
   const [editForm, setEditForm] = useState<CreateUserForm>({
     email: '',
     fullName: '',
-    role: 'branch_manager',
+    role: 'admin',
     branchId: undefined,
   });
   const [tempPassword, setTempPassword] = useState<string | null>(null);
@@ -100,7 +105,7 @@ export default function UserManagement() {
 
   // Fetch users
   const { data: users, isLoading: usersLoading } = useQuery({
-    queryKey: ['users', currentOrganization?.id],
+    queryKey: ['users', currentOrganization?.id, profile?.role, profile?.branch_id],
     queryFn: async () => {
       if (!currentOrganization) {
         throw new Error('User not associated with any organization');
@@ -117,8 +122,8 @@ export default function UserManagement() {
 
       const userIds = orgUsers?.map((ou) => ou.user_id) || [];
 
-      // Get profiles for users in the organization
-      const { data: profilesData, error: profilesError } = await supabase
+      // Build query for profiles
+      let profilesQuery = supabase
         .from('profiles')
         .select(
           `
@@ -126,8 +131,14 @@ export default function UserManagement() {
           branches(name)
         `
         )
-        .in('id', userIds)
-        .order('full_name');
+        .in('id', userIds);
+
+      // If user is branch manager, only show users from their branch
+      if (isBranchManager() && profile?.branch_id) {
+        profilesQuery = profilesQuery.eq('branch_id', profile.branch_id);
+      }
+
+      const { data: profilesData, error: profilesError } = await profilesQuery.order('full_name');
 
       if (profilesError) throw profilesError;
 
@@ -138,7 +149,7 @@ export default function UserManagement() {
 
       return usersProfiles as User[];
     },
-    enabled: profile?.role === 'admin' && !!currentOrganization,
+    enabled: canManageBranchData() && !!currentOrganization,
   });
 
   // Fetch branches
@@ -155,7 +166,7 @@ export default function UserManagement() {
       if (error) throw error;
       return data as Branch[];
     },
-    enabled: profile?.role === 'admin' && !!currentOrganization,
+    enabled: canManageBranchData() && !!currentOrganization,
   });
 
   // Create user mutation
@@ -191,16 +202,50 @@ export default function UserManagement() {
         throw new Error(error.error || 'Failed to create user');
       }
 
-      return response.json();
+      const result = await response.json();
+
+      // Log the activity
+      if (currentUser) {
+        // Get branch name if branch_id is provided
+        let branchName = null;
+        if (userData.branchId) {
+          const selectedBranch = branches?.find(b => b.id === userData.branchId);
+          branchName = selectedBranch?.name || null;
+        }
+        
+        await createActivityLog.mutateAsync({
+          organization_id: currentOrganization.id,
+          branch_id: userData.branchId || null,
+          user_id: currentUser.id,
+          activity_type: 'create',
+          entity_type: 'user',
+          entity_id: result.userId,
+          description: `Created user: ${userData.fullName} (${userData.email})`,
+          new_values: {
+            email: userData.email,
+            full_name: userData.fullName,
+            role: userData.role,
+            branch_id: userData.branchId,
+            branch_name: branchName
+          },
+          metadata: {
+            email: userData.email,
+            role: userData.role
+          }
+        });
+      }
+
+      return result;
     },
     onSuccess: (data) => {
       setTempPassword(data.temporaryPassword);
       setPasswordCopied(false);
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
       setCreateForm({
         email: '',
         fullName: '',
-        role: 'branch_manager',
+        role: 'admin',
         branchId: undefined,
       });
       toast.success('User created successfully!');
@@ -213,6 +258,16 @@ export default function UserManagement() {
   // Delete user mutation
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: string) => {
+      // Get user data before deletion for logging (including branch name)
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select(`
+          *,
+          branches(name)
+        `)
+        .eq('id', userId)
+        .single();
+
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.access_token) throw new Error('No access token');
 
@@ -233,10 +288,35 @@ export default function UserManagement() {
         throw new Error(error.error || 'Failed to delete user');
       }
 
+      // Log the activity
+      if (currentUser && userData && currentOrganization) {
+        // Enhance old values with branch name for better display
+        const enhancedOldValues = {
+          ...userData,
+          branch_name: userData.branches?.name || null
+        };
+        
+        await createActivityLog.mutateAsync({
+          organization_id: currentOrganization.id,
+          branch_id: userData.branch_id,
+          user_id: currentUser.id,
+          activity_type: 'delete',
+          entity_type: 'user',
+          entity_id: userId,
+          description: `Deleted user: ${userData.full_name} (${userData.email})`,
+          old_values: enhancedOldValues,
+          metadata: {
+            email: userData.email,
+            role: userData.role
+          }
+        });
+      }
+
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
       toast.success('User deleted successfully!');
     },
     onError: (error) => {
@@ -253,23 +333,67 @@ export default function UserManagement() {
       userId: string;
       userData: Partial<CreateUserForm>;
     }) => {
-      // If role is being changed to admin, automatically remove branch assignment
-      const branchId =
-        userData.role === 'admin' ? null : userData.branchId || null;
+      // Get old user data before update
+      const { data: oldUserData } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-      const { error } = await supabase
+      // If role is being changed to admin or auditor, automatically remove branch assignment
+      const branchId =
+        ['admin', 'auditor'].includes(userData.role || '') ? null : userData.branchId || null;
+
+      const { data: updatedData, error } = await supabase
         .from('profiles')
         .update({
           full_name: userData.fullName,
           role: userData.role,
           branch_id: branchId,
         })
-        .eq('id', userId);
+        .eq('id', userId)
+        .select(`
+          *,
+          branches(name)
+        `)
+        .single();
 
       if (error) throw error;
+
+      // Log the activity
+      if (currentUser && oldUserData && currentOrganization) {
+        // Enhance old and new values with branch names for better display
+        const enhancedOldValues = {
+          ...oldUserData,
+          branch_name: oldUserData.branches?.name || null
+        };
+        const enhancedNewValues = {
+          ...updatedData,
+          branch_name: updatedData.branches?.name || null
+        };
+        
+        await createActivityLog.mutateAsync({
+          organization_id: currentOrganization.id,
+          branch_id: updatedData.branch_id,
+          user_id: currentUser.id,
+          activity_type: 'update',
+          entity_type: 'user',
+          entity_id: userId,
+          description: `Updated user: ${updatedData.full_name} (${updatedData.email})`,
+          old_values: enhancedOldValues,
+          new_values: enhancedNewValues,
+          metadata: {
+            email: updatedData.email,
+            role: updatedData.role
+          }
+        });
+      }
+
+      return updatedData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
       setIsEditDialogOpen(false);
       setEditingUser(null);
       toast.success('User updated successfully!');
@@ -282,6 +406,16 @@ export default function UserManagement() {
   // Regenerate password mutation
   const regeneratePasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
+      // Get old user data for activity logging (including branch name)
+      const { data: oldUserData } = await supabase
+        .from('profiles')
+        .select(`
+          *,
+          branches(name)
+        `)
+        .eq('id', userId)
+        .single();
+
       const { data: session } = await supabase.auth.getSession();
       if (!session.session?.access_token) throw new Error('No access token');
 
@@ -302,13 +436,40 @@ export default function UserManagement() {
         throw new Error(error.error || 'Failed to regenerate password');
       }
 
-      return response.json();
+      const result = await response.json();
+
+      // Log the activity
+      if (currentUser && oldUserData && currentOrganization) {
+        // Enhance old values with branch name for better display
+        const enhancedOldValues = {
+          ...oldUserData,
+          branch_name: oldUserData.branches?.name || null
+        };
+        
+        await createActivityLog.mutateAsync({
+          organization_id: currentOrganization.id,
+          branch_id: oldUserData.branch_id,
+          user_id: currentUser.id,
+          activity_type: 'update',
+          entity_type: 'user',
+          entity_id: userId,
+          description: `Regenerated password for user: ${oldUserData.full_name} (${oldUserData.email})`,
+          old_values: enhancedOldValues,
+          metadata: {
+            email: oldUserData.email,
+            action: 'password_regeneration'
+          }
+        });
+      }
+
+      return result;
     },
     onSuccess: (data) => {
       setTempPassword(data.tempPassword);
       setPasswordCopied(false);
       setShowPassword(false);
       setIsCreateDialogOpen(true); // Reuse the create dialog to show the password
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
       toast.success('Password regenerated successfully!');
     },
     onError: (error) => {
@@ -345,15 +506,7 @@ export default function UserManagement() {
     }
   };
 
-  const handleDeleteUser = (userId: string, userName: string) => {
-    if (
-      confirm(
-        `Are you sure you want to delete user "${userName}"? This action cannot be undone.`
-      )
-    ) {
-      deleteUserMutation.mutate(userId);
-    }
-  };
+
 
   const handleRegeneratePassword = (userId: string) => {
     regeneratePasswordMutation.mutate(userId);
@@ -385,14 +538,14 @@ export default function UserManagement() {
     setPasswordCopied(false);
   };
 
-  // Check if user is admin
-  if (profile?.role !== 'admin') {
+  // Check if user has access to user management
+  if (!canManageBranchData()) {
     return (
       <div className="container mx-auto px-4 py-8">
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">
-              Access denied. Only administrators can manage users.
+              Access denied. Only administrators and branch managers can manage users.
             </p>
           </CardContent>
         </Card>
@@ -506,13 +659,13 @@ export default function UserManagement() {
                   <Label htmlFor="role">Role</Label>
                   <Select
                     value={createForm.role}
-                    onValueChange={(value: 'admin' | 'branch_manager') =>
+                    onValueChange={(value: UserRole) =>
                       setCreateForm({
                         ...createForm,
                         role: value,
-                        // Clear branch assignment when role is changed to admin
+                        // Clear branch assignment when role doesn't require branch
                         branchId:
-                          value === 'admin' ? undefined : createForm.branchId,
+                          ['admin', 'auditor'].includes(value) ? undefined : createForm.branchId,
                       })
                     }
                   >
@@ -520,14 +673,22 @@ export default function UserManagement() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="branch_manager">
-                        Branch Manager
+                      {canManageAllData() && (
+                        <>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="auditor">Auditor</SelectItem>
+                          <SelectItem value="branch_manager">
+                            Branch Manager
+                          </SelectItem>
+                        </>
+                      )}
+                      <SelectItem value="sales_person">
+                        Sales Person
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                {createForm.role === 'branch_manager' && (
+                {['branch_manager', 'sales_person'].includes(createForm.role) && (
                   <div>
                     <Label htmlFor="branch">
                       Branch <span className="text-red-500">*</span>
@@ -590,11 +751,9 @@ export default function UserManagement() {
                     <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
                       <h3 className="font-semibold">{user.full_name}</h3>
                       <Badge
-                        variant={
-                          user.role === 'admin' ? 'default' : 'secondary'
-                        }
+                        className={getRoleBadgeColor(user.role)}
                       >
-                        {user.role === 'admin' ? 'Admin' : 'Branch Manager'}
+                        {getRoleDisplayName(user.role)}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
@@ -607,57 +766,82 @@ export default function UserManagement() {
                     )}
                   </div>
                   <div className="flex flex-col md:flex-row justify-center items-baseline space-x-2 space-y-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openEditDialog(user)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={regeneratePasswordMutation.isPending}
-                          title="Regenerate Password"
-                        >
-                          <RotateCcwKey className="h-4 w-4" />
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>
-                            Regenerate Password
-                          </AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Are you sure you want to regenerate the password for
-                            "{user.full_name}"? This will invalidate their
-                            current password and they will need to use the new
-                            temporary password to log in.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel>Cancel</AlertDialogCancel>
-                          <AlertDialogAction
-                            onClick={() => handleRegeneratePassword(user.id)}
-                          >
-                            Regenerate Password
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
-                    {user.id !== currentUser?.id && (
+                    {/* Hide edit button for owner users and for logged-in user viewing themselves */}
+                    {user.role !== 'owner' && user.id !== currentUser?.id && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() =>
-                          handleDeleteUser(user.id, user.full_name)
-                        }
-                        disabled={deleteUserMutation.isPending}
+                        onClick={() => openEditDialog(user)}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Edit className="h-4 w-4" />
                       </Button>
+                    )}
+                    {/* Hide regenerate password for owner users and for logged-in user viewing themselves */}
+                    {user.role !== 'owner' && user.id !== currentUser?.id && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={regeneratePasswordMutation.isPending}
+                            title="Regenerate Password"
+                          >
+                            <RotateCcwKey className="h-4 w-4" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>
+                              Regenerate Password
+                            </AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to regenerate the password for
+                              "{user.full_name}"? This will invalidate their
+                              current password and they will need to use the new
+                              temporary password to log in.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleRegeneratePassword(user.id)}
+                            >
+                              Regenerate Password
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                    {/* Hide delete button for owner users and for logged-in user viewing themselves */}
+                    {user.role !== 'owner' && user.id !== currentUser?.id && (
+                      <AlertDialog>
+                         <AlertDialogTrigger asChild>
+                           <Button
+                             variant="outline"
+                             size="sm"
+                             disabled={deleteUserMutation.isPending}
+                           >
+                             <Trash2 className="h-4 w-4" />
+                           </Button>
+                         </AlertDialogTrigger>
+                         <AlertDialogContent>
+                           <AlertDialogHeader>
+                             <AlertDialogTitle>Delete User</AlertDialogTitle>
+                             <AlertDialogDescription>
+                               Are you sure you want to delete user "{user.full_name}"? This action cannot be undone.
+                             </AlertDialogDescription>
+                           </AlertDialogHeader>
+                           <AlertDialogFooter>
+                             <AlertDialogCancel>Cancel</AlertDialogCancel>
+                             <AlertDialogAction
+                               onClick={() => deleteUserMutation.mutate(user.id)}
+                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                             >
+                               Delete
+                             </AlertDialogAction>
+                           </AlertDialogFooter>
+                         </AlertDialogContent>
+                       </AlertDialog>
                     )}
                   </div>
                 </div>
@@ -705,12 +889,12 @@ export default function UserManagement() {
               <Label htmlFor="editRole">Role</Label>
               <Select
                 value={editForm.role}
-                onValueChange={(value: 'admin' | 'branch_manager') =>
+                onValueChange={(value: UserRole) =>
                   setEditForm({
                     ...editForm,
                     role: value,
-                    // Clear branch assignment when role is changed to admin
-                    branchId: value === 'admin' ? undefined : editForm.branchId,
+                    // Clear branch assignment when role doesn't require branch
+                    branchId: ['admin', 'auditor'].includes(value) ? undefined : editForm.branchId,
                   })
                 }
               >
@@ -718,12 +902,18 @@ export default function UserManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                  {canManageAllData() && (
+                    <>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="auditor">Auditor</SelectItem>
+                      <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                    </>
+                  )}
+                  <SelectItem value="sales_person">Sales Person</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            {editForm.role === 'branch_manager' && (
+            {['branch_manager', 'sales_person'].includes(editForm.role) && (
               <div>
                 <Label htmlFor="editBranch">
                   Branch <span className="text-red-500">*</span>

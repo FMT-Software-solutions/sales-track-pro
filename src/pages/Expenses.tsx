@@ -4,6 +4,7 @@ import { useExpenses, useBranches, useDeleteExpense } from '@/hooks/queries';
 import { useDebouncedSearch } from '@/hooks/useDebounce';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import {
   Card,
   CardContent,
@@ -57,6 +58,7 @@ import { toast } from 'sonner';
 export default function Expenses() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
+  const { canViewAllData, canManageAllData } = useRoleCheck();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
 
   const { data: branches = [] } = useBranches(currentOrganization?.id, user);
@@ -64,15 +66,15 @@ export default function Expenses() {
   // Initialize branch when user and branches data are available
   useEffect(() => {
     if (user?.profile && branches.length > 0) {
-      if (user.profile.role !== 'admin' && user.profile.branch_id) {
+      if (!canViewAllData && user.profile.branch_id) {
         // Non-admin users: set to their assigned branch (should be the only one returned)
         setSelectedBranch(user.profile.branch_id);
-      } else if (user.profile.role === 'admin' && selectedBranch === '') {
+      } else if (canViewAllData() && selectedBranch === '') {
         // Admin users: set to 'all' if not already set
         setSelectedBranch('all');
       }
     }
-  }, [user?.profile, branches, selectedBranch]);
+  }, [user?.profile, branches, selectedBranch, canViewAllData]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const {
     searchValue,
@@ -90,7 +92,7 @@ export default function Expenses() {
 
   // For non-admin users, automatically set their branch and prevent changing it
   const effectiveBranchId =
-    user?.profile?.role === 'admin'
+    canViewAllData()
       ? selectedBranch === 'all'
         ? undefined
         : selectedBranch
@@ -171,7 +173,7 @@ export default function Expenses() {
 
   // Check if user can delete an expense
   const canDeleteExpense = (expense: Expense) => {
-    if (user?.profile?.role === 'admin') {
+    if (canManageAllData()) {
       return true; // Admin can delete all expenses
     }
     // Branch managers can only delete expenses from their own branch
@@ -276,7 +278,7 @@ export default function Expenses() {
                       setPage(1);
                     }}
                     disabled={
-                      user?.profile?.role !== 'admin' &&
+                      !canViewAllData() &&
                       userBranches.length <= 1
                     }
                   >
@@ -288,7 +290,7 @@ export default function Expenses() {
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {user?.profile?.role === 'admin' && (
+                      {canViewAllData() && (
                         <SelectItem value="all">All Branches</SelectItem>
                       )}
                       {userBranches.map((branch) => (

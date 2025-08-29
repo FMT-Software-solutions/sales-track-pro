@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useSales, useExpenses, useBranches } from '@/hooks/queries';
 import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import {
   Card,
   CardContent,
@@ -41,6 +42,7 @@ import { SalesItemsDisplay } from '@/components/ui/SalesItemsDisplay';
 export function Reports() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
+  const { canViewAllData } = useRoleCheck();
   const [startDate, setStartDate] = useState<Date>(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   );
@@ -59,10 +61,10 @@ export function Reports() {
         // Non-admin users: set to their assigned branch (should be the only one returned)
         setSelectedBranches([user.profile.branch_id]);
       } else if (
-        user.profile.role === 'admin' &&
+        canViewAllData() &&
         selectedBranches.length === 0
       ) {
-        // Admin users: set to empty array if not already set
+        // Users who can view all data: set to empty array if not already set
         setSelectedBranches([]);
       }
     }
@@ -70,7 +72,7 @@ export function Reports() {
 
   // Filter branches for data queries based on selection and active status
   const getFilteredBranchIds = () => {
-    if (user?.profile?.role !== 'admin') {
+    if (!canViewAllData()) {
       return user?.profile?.branch_id ? [user.profile.branch_id] : [];
     }
 
@@ -86,11 +88,6 @@ export function Reports() {
   };
 
   const filteredBranchIds = getFilteredBranchIds();
-
-  // For now, we'll use the first branch ID for the existing hooks
-  // TODO: Update hooks to support multiple branch IDs
-  const effectiveBranchId =
-    filteredBranchIds.length === 1 ? filteredBranchIds[0] : undefined;
 
   const { data: allSales = [], isLoading: salesLoading } = useSales(
     undefined, // Get all sales first
@@ -117,7 +114,7 @@ export function Reports() {
 
   // Filter branches based on active status and user preference
   const userBranches =
-    user?.profile?.role === 'admin'
+    canViewAllData()
       ? includeInactiveBranches
         ? branches
         : branches?.filter((branch) => branch.is_active)
@@ -399,7 +396,7 @@ export function Reports() {
               <div className="space-y-2 flex flex-col">
                 <div className="flex gap-2">
                   <Label htmlFor="branch">Branches</Label>
-                  {user?.profile?.role === 'admin' && (
+                  {canViewAllData() && (
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="include-inactive"
@@ -421,7 +418,7 @@ export function Reports() {
                       variant="outline"
                       className="w-[250px] justify-between"
                       disabled={
-                        user?.profile?.role !== 'admin' &&
+                        !canViewAllData() &&
                         userBranches?.length <= 1
                       }
                     >
@@ -443,7 +440,7 @@ export function Reports() {
                   </PopoverTrigger>
                   <PopoverContent className="w-[250px] p-0">
                     <div className="p-3 space-y-2 max-h-48 overflow-y-auto">
-                      {user?.profile?.role === 'admin' && (
+                      {canViewAllData() && (
                         <div className="flex items-center space-x-2">
                           <Checkbox
                             id="all-branches"
@@ -486,7 +483,7 @@ export function Reports() {
                               }
                             }}
                             disabled={
-                              user?.profile?.role !== 'admin' &&
+                              !canViewAllData() &&
                               userBranches.length <= 1
                             }
                           />
@@ -517,7 +514,7 @@ export function Reports() {
       </Card>
 
       {/* Selected Branches Display */}
-      {(selectedBranches.length > 0 || user?.profile?.role === 'admin') && (
+      {(selectedBranches.length > 0 || canViewAllData()) && (
         <Card className="mb-4">
           <CardHeader>
             <CardTitle className="text-sm font-medium">Report Scope</CardTitle>
@@ -528,7 +525,7 @@ export function Reports() {
                 <Badge variant="outline" className="text-sm">
                   All {includeInactiveBranches ? 'Branches' : 'Active Branches'}
                   {includeInactiveBranches &&
-                    user?.profile?.role === 'admin' &&
+                    canViewAllData() &&
                     ' (Including Inactive)'}
                 </Badge>
               ) : (

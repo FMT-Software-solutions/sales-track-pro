@@ -20,6 +20,7 @@ import {
   endOfDay,
 } from 'date-fns';
 import { getPeriodRange, formatCurrency } from '@/lib/utils';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 
 const periods = [
   { value: 'day', label: 'Today' },
@@ -32,6 +33,7 @@ const periods = [
 export function Dashboard() {
   const { user } = useAuthStore();
   const { currentOrganization } = useOrganization();
+  const { canViewAllData } = useRoleCheck();
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('day');
   const [isInitialized, setIsInitialized] = useState(false);
@@ -41,20 +43,20 @@ export function Dashboard() {
   // Initialize branch when user and branches data are available (only once)
   useEffect(() => {
     if (user?.profile && branches.length > 0 && !isInitialized) {
-      if (user.profile.role !== 'admin' && user.profile.branch_id) {
+      if (!canViewAllData() && user.profile.branch_id) {
         // Non-admin users: set to their assigned branch (should be the only one returned)
         setSelectedBranch(user.profile.branch_id);
-      } else if (user.profile.role === 'admin') {
+      } else if (canViewAllData()) {
         // Admin users: set to 'all' if not already set
         setSelectedBranch('all');
       }
       setIsInitialized(true);
     }
-  }, [user?.profile, branches, isInitialized]);
+  }, [user?.profile, branches, isInitialized, canViewAllData]);
 
   // For non-admin users, automatically set their branch and prevent changing it
   const effectiveBranchId =
-    user?.profile?.role === 'admin'
+    canViewAllData()
       ? selectedBranch === 'all'
         ? undefined
         : selectedBranch
@@ -226,7 +228,7 @@ export function Dashboard() {
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
             Dashboard
           </h1>
-          {user?.profile?.role !== 'admin' && userBranches.length > 0 && (
+          {!canViewAllData() && userBranches.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1">
               Viewing data for:{' '}
               <span className="font-medium">{userBranches[0]?.name}</span>
@@ -238,7 +240,7 @@ export function Dashboard() {
             value={selectedBranch}
             onValueChange={setSelectedBranch}
             disabled={
-              user?.profile?.role !== 'admin' && userBranches.length <= 1
+              !canViewAllData() && userBranches.length <= 1
             }
           >
             <SelectTrigger className="w-48">
@@ -249,7 +251,7 @@ export function Dashboard() {
               />
             </SelectTrigger>
             <SelectContent>
-              {user?.profile?.role === 'admin' && (
+              {canViewAllData() && (
                 <SelectItem value="all">All Branches</SelectItem>
               )}
               {userBranches.map((branch) => (

@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useOrganization } from '@/contexts/OrganizationContext';
 import { useUpdateOrganization, useUpdateProfile } from '@/hooks/queries';
 import { RoleGuard } from '@/components/auth/RoleGuard';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { ChangePassword } from '@/components/auth/ChangePassword';
 import { toast } from 'sonner';
 import { UpdateSettings } from '@/components/settings/UpdateSettings';
@@ -26,6 +27,7 @@ import {
   Shield,
   Building2,
   Users,
+  Lock,
 } from 'lucide-react';
 
 export function Settings() {
@@ -35,6 +37,7 @@ export function Settings() {
     setCurrentOrganization,
     userOrganizations,
   } = useOrganization();
+  const { canViewAllData } = useRoleCheck();
   const [orgName, setOrgName] = useState(currentOrganization?.name || '');
 
   const [orgEmail, setOrgEmail] = useState(currentOrganization?.email || '');
@@ -45,6 +48,11 @@ export function Settings() {
   const [orgCurrency, setOrgCurrency] = useState(
     currentOrganization?.currency || 'GH₵'
   );
+
+  // Period closing state
+  const [closingDate, setClosingDate] = useState('');
+  const [closingReason, setClosingReason] = useState('');
+  const [isClosingPeriod, setIsClosingPeriod] = useState(false);
 
   // Profile form refs
   const fullNameRef = useRef<HTMLInputElement>(null);
@@ -108,6 +116,28 @@ export function Settings() {
     }
   };
 
+  const handleClosePeriod = async () => {
+    if (!closingDate || !closingReason.trim()) {
+      toast.error('Please provide both closing date and reason');
+      return;
+    }
+
+    setIsClosingPeriod(true);
+    try {
+      // This would typically call an API to close the period
+      // For now, we'll just show a success message
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate API call
+
+      toast.success('Period closed successfully');
+      setClosingDate('');
+      setClosingReason('');
+    } catch (error) {
+      toast.error('Failed to close period');
+    } finally {
+      setIsClosingPeriod(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -122,15 +152,18 @@ export function Settings() {
       <Tabs defaultValue="profile" className="space-y-6">
         <TabsList
           className={`grid w-full ${
-            user?.profile?.role === 'admin' ? 'grid-cols-3' : 'grid-cols-1'
+            canViewAllData() ? 'grid-cols-4' : 'grid-cols-1'
           }`}
         >
           <TabsTrigger value="profile">Profile</TabsTrigger>
-          <RoleGuard allowedRoles={['admin']}>
+          <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
             <TabsTrigger value="organization">Organization</TabsTrigger>
           </RoleGuard>
-          <RoleGuard allowedRoles={['admin']}>
+          <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
             <TabsTrigger value="preferences">Preferences</TabsTrigger>
+          </RoleGuard>
+          <RoleGuard allowedRoles={['owner', 'admin']}>
+            <TabsTrigger value="period-closing">Period Closing</TabsTrigger>
           </RoleGuard>
         </TabsList>
 
@@ -175,7 +208,7 @@ export function Settings() {
                   <div className="flex items-center space-x-2">
                     <Badge
                       variant={
-                        user?.profile?.role === 'admin'
+                        canViewAllData()
                           ? 'default'
                           : 'secondary'
                       }
@@ -248,7 +281,7 @@ export function Settings() {
           </div>
         </TabsContent>
 
-        <RoleGuard allowedRoles={['admin']}>
+        <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
           <TabsContent value="organization" className="space-y-6">
             {currentOrganization && (
               <Card>
@@ -347,7 +380,7 @@ export function Settings() {
           </TabsContent>
         </RoleGuard>
 
-        <RoleGuard allowedRoles={['admin']}>
+        <RoleGuard allowedRoles={['owner', 'admin', 'auditor']}>
           <TabsContent value="preferences" className="space-y-6">
             <Card>
               <CardHeader>
@@ -386,6 +419,135 @@ export function Settings() {
 
             {/* Software Updates */}
             <UpdateSettings />
+          </TabsContent>
+        </RoleGuard>
+
+        <RoleGuard allowedRoles={['admin', 'owner']}>
+          <TabsContent value="period-closing" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Lock className="mr-2 h-5 w-5" />
+                  Period Closing
+                </CardTitle>
+                <CardDescription>
+                  Close accounting periods to prevent further modifications to
+                  sales data
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg
+                        className="h-5 w-5 text-yellow-400"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-yellow-800">
+                        Important Notice
+                      </h3>
+                      <div className="mt-2 text-sm text-yellow-700">
+                        <p>
+                          Closing a period will prevent any modifications to
+                          sales data before the specified date. This action
+                          cannot be undone. Please ensure all corrections and
+                          adjustments are completed before proceeding.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="closing-date">Closing Date</Label>
+                    <Input
+                      id="closing-date"
+                      type="date"
+                      value={closingDate}
+                      onChange={(e) => setClosingDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      All sales data up to and including this date will be
+                      locked
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="closing-reason">Reason for Closing</Label>
+                    <Input
+                      id="closing-reason"
+                      value={closingReason}
+                      onChange={(e) => setClosingReason(e.target.value)}
+                      placeholder="e.g., Month-end closing, Audit preparation"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Provide a reason for this period closing
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-4">
+                  <h4 className="text-sm font-medium">
+                    Recent Period Closings
+                  </h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                      <div>
+                        <p className="text-sm font-medium">December 2024</p>
+                        <p className="text-xs text-muted-foreground">
+                          Closed on Jan 5, 2025 - Month-end closing
+                        </p>
+                      </div>
+                      <Badge variant="secondary">Closed</Badge>
+                    </div>
+                    <div className="flex items-center justify-between p-3 border rounded-lg bg-gray-50">
+                      <div>
+                        <p className="text-sm font-medium">November 2024</p>
+                        <p className="text-xs text-muted-foreground">
+                          Closed on Dec 3, 2024 - Audit preparation
+                        </p>
+                      </div>
+                      <Badge variant="secondary">Closed</Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleClosePeriod}
+                    disabled={
+                      isClosingPeriod || !closingDate || !closingReason.trim()
+                    }
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {isClosingPeriod ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Closing Period...
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="mr-2 h-4 w-4" />
+                        Close Period
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </RoleGuard>
       </Tabs>

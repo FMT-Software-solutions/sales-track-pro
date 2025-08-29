@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 
 interface UserInfoProps {
   userId: string | null;
@@ -12,12 +13,13 @@ interface UserInfoProps {
 
 export function UserInfo({ userId, userProfile, label, className = "" }: UserInfoProps) {
   const { user } = useAuthStore();
+  const { canViewAllData } = useRoleCheck();
   
   // Don't show if no user ID
   if (!userId) return null;
   
-  // Only show to admin users
-  if (user?.profile?.role !== 'admin') return null;
+  // Only show to users who can view all data (owner, admin, auditor)
+  if (!canViewAllData()) return null;
   
   // Determine display name
   const isCurrentUser = userId === user?.id;

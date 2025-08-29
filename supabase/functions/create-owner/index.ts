@@ -152,7 +152,7 @@ serve(async (req) => {
       )
     }
 
-    // Create the admin user in Supabase Auth
+    // Create the owner user in Supabase Auth
     const fullName = `${firstName} ${lastName}`
     const { data: newUser, error: createUserError } = await supabaseAdmin.auth.admin.createUser({
       email: userEmail,
@@ -160,7 +160,7 @@ serve(async (req) => {
       email_confirm: true,
       user_metadata: {
         full_name: fullName,
-        role: 'admin',
+        role: 'owner',
         requires_password_reset: true
       }
     })
@@ -204,7 +204,7 @@ serve(async (req) => {
         id: newUser.user.id,
         email: userEmail,
         full_name: fullName,
-        role: 'admin',
+        role: 'owner',
         branch_id: null // Owner doesn't belong to a specific branch
       })
 
@@ -225,13 +225,13 @@ serve(async (req) => {
       )
     }
 
-    // Add user to organization as admin
+    // Add user to organization as owner
     const { error: orgUserError } = await supabaseAdmin
       .from('user_organizations')
       .insert({
         user_id: newUser.user.id,
         organization_id: organizationId,
-        role: 'admin',
+        role: 'owner',
         is_active: true
       })
 
@@ -266,7 +266,7 @@ serve(async (req) => {
           id: newUser.user.id,
           email: userEmail,
           fullName: fullName,
-          role: 'admin',
+          role: 'owner',
           organizationId: organizationId
         },
         temporaryPassword: userTemporalPassword,

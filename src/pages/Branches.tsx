@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useBranches } from '@/hooks/queries';
 import { useOrganization } from '@/contexts/OrganizationContext';
-import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -25,12 +24,13 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 
 type Branch = Database['public']['Tables']['branches']['Row'];
 
 export function Branches() {
   const { currentOrganization } = useOrganization();
-  const { user } = useAuthStore();
+  const { canManageAllData } = useRoleCheck();
   const { data: branches = [], isLoading } = useBranches(
     currentOrganization?.id
   );
@@ -41,7 +41,7 @@ export function Branches() {
     'all' | 'active' | 'inactive'
   >('all');
 
-  const isAdmin = user?.profile?.role === 'admin';
+  const isAdmin = canManageAllData();
 
   const handleSuccess = () => {
     setIsDialogOpen(false);
@@ -204,7 +204,7 @@ export function Branches() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Only admins can edit inactive branches</p>
+                            <p>Only owners and admins can edit inactive branches</p>
                           </TooltipContent>
                         </Tooltip>
                       )}

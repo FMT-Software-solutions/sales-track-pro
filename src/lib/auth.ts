@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
+    
+export type UserRole = "owner" | 'admin' | 'branch_manager' | 'auditor' | 'sales_person';
 export interface UserOrganization {
   organization_id: string;
   role: string;
@@ -14,7 +16,7 @@ export interface UserOrganization {
 export interface AuthUser extends User {
   profile?: {
     full_name: string;
-    role: 'admin' | 'branch_manager';
+    role: UserRole;
     branch_id: string | null;
     user_organizations?: UserOrganization[];
   };
@@ -30,7 +32,7 @@ export async function signIn(email: string, password: string) {
   return data;
 }
 
-export async function signUp(email: string, password: string, fullName: string, role: 'admin' | 'branch_manager' = 'branch_manager') {
+export async function signUp(email: string, password: string, fullName: string, role: UserRole = 'branch_manager') {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

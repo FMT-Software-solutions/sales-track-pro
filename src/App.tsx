@@ -20,6 +20,7 @@ import UserManagement from '@/pages/UserManagement';
 import { PasswordReset } from '@/pages/PasswordReset';
 import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
+import Activities from './pages/Activities';
 // import TestCreateOwner from './pages/TestCreateOwner';
 
 const queryClient = new QueryClient({
@@ -61,7 +62,7 @@ function App() {
           <Route
             path="/branches"
             element={
-              <ProtectedRoute requiredRole="admin">
+              <ProtectedRoute allowedRoles={['owner', 'admin']}>
                 <OrganizationProvider>
                   <AppLayout>
                     <Branches />
@@ -109,7 +110,7 @@ function App() {
           <Route
             path="/users"
             element={
-              <ProtectedRoute requiredRole="admin">
+              <ProtectedRoute allowedRoles={['owner', 'admin', 'branch_manager']}>
                 <OrganizationProvider>
                   <AppLayout>
                     <UserManagement />
@@ -125,6 +126,18 @@ function App() {
                 <OrganizationProvider>
                   <AppLayout>
                     <Settings />
+                  </AppLayout>
+                </OrganizationProvider>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/activities"
+            element={
+              <ProtectedRoute allowedRoles={['owner', 'admin', 'branch_manager']}>
+                <OrganizationProvider>
+                  <AppLayout>
+                    <Activities />
                   </AppLayout>
                 </OrganizationProvider>
               </ProtectedRoute>

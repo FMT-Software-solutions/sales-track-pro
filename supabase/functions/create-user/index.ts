@@ -69,7 +69,7 @@ serve(async (req) => {
       )
     }
 
-    // Check if the user is an admin
+    // Check if the user has required permissions
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
@@ -83,10 +83,10 @@ serve(async (req) => {
       )
     }
 
-    if (profile?.role !== 'admin') {
+    if (!['owner', 'admin', 'branch_manager'].includes(profile?.role)) {
       return new Response(
-        JSON.stringify({ error: 'Forbidden: Admin access required' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Unauthorized. You do not have required permissions to perform this action.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -121,9 +121,9 @@ serve(async (req) => {
     }
 
     // Validate role
-    if (!['admin', 'branch_manager'].includes(role)) {
+    if (!["owner", 'admin', 'branch_manager', 'auditor', 'sales_person'].includes(role)) {
       return new Response(
-        JSON.stringify({ error: 'Invalid role. Must be admin or branch_manager' }),
+        JSON.stringify({ error: 'Invalid role value' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -187,7 +187,7 @@ serve(async (req) => {
       .insert({
         user_id: newUser.user.id,
         organization_id: organizationId,
-        role: role === 'admin' ? 'admin' : 'member',
+        role: role,
         is_active: true
       })
 

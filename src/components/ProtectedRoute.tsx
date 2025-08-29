@@ -1,15 +1,18 @@
 import { ReactNode, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/auth';
+import { UserRole } from '@/lib/auth';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  requiredRole?: 'admin' | 'branch_manager';
+  requiredRole?: UserRole;
+  allowedRoles?: UserRole[];
 }
 
 export function ProtectedRoute({
   children,
   requiredRole,
+  allowedRoles,
 }: ProtectedRouteProps) {
   const navigate = useNavigate();
   const { user, loading } = useAuthStore();
@@ -28,11 +31,19 @@ export function ProtectedRoute({
       return;
     }
 
-    if (requiredRole && user.profile?.role !== requiredRole) {
+    // Check role permissions
+    const hasPermission = () => {
+      if (!user.profile?.role) return false;
+      if (requiredRole) return user.profile.role === requiredRole;
+      if (allowedRoles) return allowedRoles.includes(user.profile.role);
+      return true; // No role restrictions
+    };
+
+    if (!hasPermission()) {
       navigate('/dashboard', { replace: true });
       return;
     }
-  }, [user, loading, navigate, requiredRole]);
+  }, [user, loading, navigate, requiredRole, allowedRoles]);
 
   if (loading) {
     return (
@@ -45,10 +56,18 @@ export function ProtectedRoute({
     );
   }
 
+  // Check role permissions for render
+  const hasPermission = () => {
+    if (!user?.profile?.role) return false;
+    if (requiredRole) return user.profile.role === requiredRole;
+    if (allowedRoles) return allowedRoles.includes(user.profile.role);
+    return true; // No role restrictions
+  };
+
   if (
     !user ||
     user.user_metadata?.requires_password_reset ||
-    (requiredRole && user.profile?.role !== requiredRole)
+    !hasPermission()
   ) {
     return null;
   }
