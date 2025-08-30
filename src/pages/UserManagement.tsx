@@ -100,7 +100,8 @@ export default function UserManagement() {
     email: '',
     fullName: '',
     role: 'sales_person',
-    branchId: undefined,
+    branchId:
+      isBranchManager() && profile?.branch_id ? profile.branch_id : undefined,
   });
   const [editForm, setEditForm] = useState<CreateUserForm>({
     email: '',
@@ -308,7 +309,10 @@ export default function UserManagement() {
         email: '',
         fullName: '',
         role: 'sales_person',
-        branchId: undefined,
+        branchId:
+          isBranchManager() && profile?.branch_id
+            ? profile.branch_id
+            : undefined,
       });
       toast.success('User created successfully!');
     },
@@ -962,6 +966,8 @@ export default function UserManagement() {
                         // Clear branch assignment when role doesn't require branch
                         branchId: ['admin', 'auditor'].includes(value)
                           ? undefined
+                          : isBranchManager() && profile?.branch_id
+                          ? profile.branch_id
                           : createForm.branchId,
                       })
                     }
@@ -1005,11 +1011,20 @@ export default function UserManagement() {
                         <SelectValue placeholder="Select a branch" />
                       </SelectTrigger>
                       <SelectContent>
-                        {branches?.map((branch) => (
-                          <SelectItem key={branch.id} value={branch.id}>
-                            {branch.name}
-                          </SelectItem>
-                        ))}
+                        {branches
+                          ?.filter((branch) => {
+                            // Branch managers can only see their assigned branch
+                            if (isBranchManager() && profile?.branch_id) {
+                              return branch.id === profile.branch_id;
+                            }
+                            // Owners and admins can see all branches
+                            return true;
+                          })
+                          .map((branch) => (
+                            <SelectItem key={branch.id} value={branch.id}>
+                              {branch.name}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1127,8 +1142,8 @@ export default function UserManagement() {
                             <AlertDialogDescription>
                               Are you sure you want to deactivate user "
                               {user.full_name}"? They will no longer be able to
-                              log in, but their data will be preserved. Only
-                              owners can reactivate deactivated users.
+                              log in. You will need to contact your admin if you
+                              decide to reactive this user.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -1316,6 +1331,8 @@ export default function UserManagement() {
                     // Clear branch assignment when role doesn't require branch
                     branchId: ['admin', 'auditor'].includes(value)
                       ? undefined
+                      : isBranchManager() && profile?.branch_id
+                      ? profile.branch_id
                       : editForm.branchId,
                   })
                 }
@@ -1357,11 +1374,20 @@ export default function UserManagement() {
                     <SelectValue placeholder="Select a branch" />
                   </SelectTrigger>
                   <SelectContent>
-                    {branches?.map((branch) => (
-                      <SelectItem key={branch.id} value={branch.id}>
-                        {branch.name}
-                      </SelectItem>
-                    ))}
+                    {branches
+                      ?.filter((branch) => {
+                        // Branch managers can only see their assigned branch
+                        if (isBranchManager() && profile?.branch_id) {
+                          return branch.id === profile.branch_id;
+                        }
+                        // Owners and admins can see all branches
+                        return true;
+                      })
+                      .map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

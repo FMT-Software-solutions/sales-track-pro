@@ -34,10 +34,13 @@ export function PasswordReset() {
 
     // Check if user is inactive
     if (user.profile?.is_active === false) {
-      toast.error('Your account has been deactivated. You cannot change your password.', {
-        duration: 6000,
-        description: 'Please contact your administrator for assistance.',
-      });
+      toast.error(
+        'Your account has been deactivated. You cannot change your password.',
+        {
+          duration: 6000,
+          description: 'Please contact your administrator for assistance.',
+        }
+      );
       navigate('/login', { replace: true });
       return;
     }
@@ -110,10 +113,13 @@ export function PasswordReset() {
 
     // Check if user is inactive before proceeding
     if (user?.profile?.is_active === false) {
-      toast.error('Your account has been deactivated. You cannot change your password.', {
-        duration: 6000,
-        description: 'Please contact your administrator for assistance.',
-      });
+      toast.error(
+        'Your account has been deactivated. You cannot change your password.',
+        {
+          duration: 6000,
+          description: 'Please contact your administrator for assistance.',
+        }
+      );
       navigate('/login', { replace: true });
       return;
     }

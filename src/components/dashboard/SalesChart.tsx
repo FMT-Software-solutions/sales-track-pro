@@ -36,6 +36,13 @@ interface SalesChartProps {
 export function SalesChart({ data, period }: SalesChartProps) {
   const { currentOrganization } = useOrganization();
 
+  // Prepare data for line chart with separate positive and negative profit lines
+  const lineChartData = data.map((item) => ({
+    ...item,
+    positiveProfit: item.profit >= 0 ? item.profit : null,
+    negativeProfit: item.profit < 0 ? item.profit : null,
+  }));
+
   return (
     <Card className="col-span-4">
       <CardHeader>
@@ -94,7 +101,7 @@ export function SalesChart({ data, period }: SalesChartProps) {
 
           <TabsContent value="line" className="mt-4">
             <ResponsiveContainer width="100%" height={350}>
-              <LineChart data={data}>
+              <LineChart data={lineChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="name"
@@ -113,11 +120,21 @@ export function SalesChart({ data, period }: SalesChartProps) {
                   }
                 />
                 <Tooltip
-                  formatter={(value: number, name: string) => [
-                    formatCurrency(value, currentOrganization?.currency),
-                    name,
-                  ]}
+                  formatter={(value: number, name: string) => {
+                    if (value === null) return [null, null];
+                    return [
+                      formatCurrency(value, currentOrganization?.currency),
+                      name === 'positiveProfit' || name === 'negativeProfit'
+                        ? 'Profit'
+                        : name,
+                    ];
+                  }}
                   labelStyle={{ color: '#000' }}
+                  contentStyle={{
+                    backgroundColor: '#fff',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                  }}
                 />
                 <Line
                   type="monotone"
@@ -135,22 +152,21 @@ export function SalesChart({ data, period }: SalesChartProps) {
                 />
                 <Line
                   type="monotone"
-                  dataKey="profit"
+                  dataKey="positiveProfit"
                   stroke="#10b981"
                   strokeWidth={2}
                   name="Profit"
-                  dot={(props: any) => {
-                    const { cx, cy, payload } = props;
-                    return (
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r={3}
-                        fill={payload.profit >= 0 ? '#10b981' : '#ef4444'}
-                        stroke={payload.profit >= 0 ? '#10b981' : '#ef4444'}
-                      />
-                    );
-                  }}
+                  connectNulls={false}
+                  dot={{ fill: '#10b981', r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="negativeProfit"
+                  stroke="#ef4444"
+                  strokeWidth={2}
+                  name="Profit"
+                  connectNulls={false}
+                  dot={{ fill: '#ef4444', r: 3 }}
                 />
               </LineChart>
             </ResponsiveContainer>

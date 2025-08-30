@@ -46,12 +46,13 @@ export function LoginForm({ setUser }: { setUser: (user: AuthUser) => void }) {
       }
     } catch (error) {
       const errorMessage = (error as any).message || 'Failed to sign in';
-      
+
       // Show enhanced message for deactivated accounts
       if (errorMessage.includes('deactivated')) {
         toast.error(errorMessage, {
           duration: 6000, // Show longer for important message
-          description: 'Your access has been restricted. Contact support if you believe this is an error.',
+          description:
+            'Your access has been restricted. Contact support if you believe this is an error.',
         });
       } else {
         toast.error(errorMessage);

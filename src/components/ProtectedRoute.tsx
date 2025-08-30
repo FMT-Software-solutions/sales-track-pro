@@ -42,7 +42,8 @@ export function ProtectedRoute({
 
     // Check role permissions
     const hasPermission = () => {
-      if (!user.profile?.role || user.profile?.is_active === false) return false;
+      if (!user.profile?.role || user.profile?.is_active === false)
+        return false;
       if (requiredRole) return user.profile.role === requiredRole;
       if (allowedRoles) return allowedRoles.includes(user.profile.role);
       return true; // No role restrictions
@@ -67,7 +68,8 @@ export function ProtectedRoute({
 
   // Check role permissions for render
   const hasPermission = () => {
-    if (!user?.profile?.role || user?.profile?.is_active === false) return false;
+    if (!user?.profile?.role || user?.profile?.is_active === false)
+      return false;
     if (requiredRole) return user.profile.role === requiredRole;
     if (allowedRoles) return allowedRoles.includes(user.profile.role);
     return true; // No role restrictions
