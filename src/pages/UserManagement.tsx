@@ -36,7 +36,6 @@ import {
 } from '../components/ui/alert-dialog';
 import { Badge } from '../components/ui/badge';
 import {
-  Trash2,
   UserPlus,
   Edit,
   Eye,
@@ -44,6 +43,9 @@ import {
   Copy,
   Check,
   RotateCcwKey,
+  UserCheck,
+  Users,
+  UserX,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { UserRole } from '@/lib/auth';
@@ -55,6 +57,7 @@ interface User {
   full_name: string;
   role: UserRole;
   branch_id?: string;
+  is_active?: boolean;
   branches?: { name: string };
   user_organizations?: Array<{
     organization_id: string;
@@ -88,6 +91,7 @@ export default function UserManagement() {
     canManageBranchData,
     isBranchManager,
     isOwner,
+    hasRole,
   } = useRoleCheck();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -107,6 +111,7 @@ export default function UserManagement() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
+  const [showInactiveUsers, setShowInactiveUsers] = useState(false);
 
   // Get current organization from context
 
@@ -134,7 +139,7 @@ export default function UserManagement() {
 
       const userIds = orgUsers?.map((ou) => ou.user_id) || [];
 
-      // Build query for profiles
+      // Build query for profiles - only active users
       let profilesQuery = supabase
         .from('profiles')
         .select(
@@ -143,7 +148,8 @@ export default function UserManagement() {
           branches(name)
         `
         )
-        .in('id', userIds);
+        .in('id', userIds)
+        .eq('is_active', true);
 
       // If user is branch manager, only show users from their branch
       if (isBranchManager() && profile?.branch_id) {
@@ -165,6 +171,45 @@ export default function UserManagement() {
       return usersProfiles as User[];
     },
     enabled: canManageBranchData() && !!currentOrganization,
+  });
+
+  // Fetch inactive users (owner only)
+  const { data: inactiveUsers, isLoading: inactiveUsersLoading } = useQuery({
+    queryKey: ['inactive-users', currentOrganization?.id, profile?.role],
+    queryFn: async () => {
+      if (!currentOrganization) {
+        throw new Error('User not associated with any organization');
+      }
+
+      // Get all inactive users in the same organization
+      const { data: orgUsers, error: orgUsersError } = await supabase
+        .from('user_organizations')
+        .select('user_id')
+        .eq('organization_id', currentOrganization.id)
+        .eq('is_active', false);
+
+      if (orgUsersError) throw orgUsersError;
+
+      const userIds = orgUsers?.map((ou) => ou.user_id) || [];
+
+      // Build query for inactive profiles
+      const { data: profilesData, error: profilesError } = await supabase
+        .from('profiles')
+        .select(
+          `
+          *,
+          branches(name)
+        `
+        )
+        .in('id', userIds)
+        .eq('is_active', false)
+        .order('full_name');
+
+      if (profilesError) throw profilesError;
+
+      return profilesData as User[];
+    },
+    enabled: isOwner() && !!currentOrganization,
   });
 
   // Fetch branches
@@ -272,10 +317,86 @@ export default function UserManagement() {
     },
   });
 
-  // Delete user mutation
+  // Reactivate user mutation
+  const reactivateUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      // Get user data before reactivation for logging
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select(
+          `
+          *,
+          branches(name)
+        `
+        )
+        .eq('id', userId)
+        .single();
+
+      // Get current session for authorization
+      const { data: session } = await supabase.auth.getSession();
+      if (!session.session?.access_token) throw new Error('No access token');
+
+      // Call the reactivate-user edge function
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reactivate-user`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session.session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to reactivate user');
+      }
+
+      const result = await response.json();
+
+      // Log the activity
+      if (currentUser && userData) {
+        await createActivityLog.mutateAsync({
+          organization_id: currentOrganization?.id || '',
+          branch_id: userData.branch_id || null,
+          user_id: currentUser.id,
+          activity_type: 'update',
+          entity_type: 'user',
+          entity_id: userId,
+          description: `Reactivated user: ${userData.full_name} (${userData.email})`,
+          new_values: {
+            is_active: true,
+            reactivated_at: new Date().toISOString(),
+            reactivated_by: currentUser.id,
+          },
+          metadata: {
+            email: userData.email,
+            role: userData.role,
+          },
+        });
+      }
+
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['inactive-users'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
+      toast.success('User reactivated successfully!');
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Delete user mutation (now deactivates instead)
   const deleteUserMutation = useMutation({
     mutationFn: async (userId: string) => {
-      // Get user data before deletion for logging (including branch name)
+      // Get user data before deactivation for logging (including branch name)
       const { data: userData } = await supabase
         .from('profiles')
         .select(
@@ -319,11 +440,17 @@ export default function UserManagement() {
           organization_id: currentOrganization.id,
           branch_id: userData.branch_id,
           user_id: currentUser.id,
-          activity_type: 'delete',
+          activity_type: 'update',
           entity_type: 'user',
           entity_id: userId,
-          description: `Deleted user: ${userData.full_name} (${userData.email})`,
+          description: `Deactivated user: ${userData.full_name} (${userData.email})`,
           old_values: enhancedOldValues,
+          new_values: {
+            ...enhancedOldValues,
+            is_active: false,
+            deactivated_at: new Date().toISOString(),
+            deactivated_by: currentUser.id,
+          },
           metadata: {
             email: userData.email,
             role: userData.role,
@@ -335,8 +462,9 @@ export default function UserManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['inactive-users'] });
       queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
-      toast.success('User deleted successfully!');
+      toast.success('User deactivated successfully!');
     },
     onError: (error) => {
       toast.error(error.message);
@@ -564,16 +692,16 @@ export default function UserManagement() {
   const canShowActionButtons = (targetUser: User) => {
     // Users cannot see action buttons for themselves
     if (targetUser.id === currentUser?.id) return false;
-    
+
     // No action buttons for owner users
     if (targetUser.role === 'owner') return false;
-    
+
     // Only owners can manage admin users
     if (targetUser.role === 'admin' && profile?.role !== 'owner') return false;
-    
+
     // Admin users cannot see action buttons for other admin users
     if (targetUser.role === 'admin' && profile?.role === 'admin') return false;
-    
+
     return true;
   };
 
@@ -647,6 +775,134 @@ export default function UserManagement() {
                         <EyeOff className="h-4 w-4" />
                       ) : (
                         <Eye className="h-4 w-4" />
+                      )}
+
+                      {/* Owner-only Inactive Users Section */}
+                      {isOwner() && (
+                        <div className="mt-8">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <h2 className="text-lg font-semibold text-muted-foreground">
+                                Inactive Users
+                              </h2>
+                              <p className="text-sm text-muted-foreground">
+                                Users who have been deactivated (Owner access
+                                only)
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setShowInactiveUsers(!showInactiveUsers)
+                              }
+                            >
+                              <Users className="mr-2 h-4 w-4" />
+                              {showInactiveUsers ? 'Hide' : 'Show'} Inactive
+                              Users
+                              {inactiveUsers && inactiveUsers.length > 0 && (
+                                <Badge variant="secondary" className="ml-2">
+                                  {inactiveUsers.length}
+                                </Badge>
+                              )}
+                            </Button>
+                          </div>
+
+                          {showInactiveUsers && (
+                            <div className="space-y-4">
+                              {inactiveUsersLoading ? (
+                                <div className="text-center py-4 text-muted-foreground">
+                                  Loading inactive users...
+                                </div>
+                              ) : inactiveUsers && inactiveUsers.length > 0 ? (
+                                <div className="grid gap-4">
+                                  {inactiveUsers.map((user) => (
+                                    <Card key={user.id} className="opacity-60">
+                                      <CardContent className="pt-6">
+                                        <div className="flex justify-between items-start">
+                                          <div className="space-y-2 flex-1">
+                                            <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
+                                              <h3 className="font-semibold text-muted-foreground">
+                                                {user.full_name}
+                                              </h3>
+                                              <Badge
+                                                className={getRoleBadgeColor(
+                                                  user.role
+                                                )}
+                                              >
+                                                {getRoleDisplayName(user.role)}
+                                              </Badge>
+                                              <Badge variant="destructive">
+                                                Inactive
+                                              </Badge>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground">
+                                              {user.email}
+                                            </p>
+                                            {user.branches && (
+                                              <p className="text-sm text-muted-foreground">
+                                                Branch: {user.branches.name}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <AlertDialog>
+                                              <AlertDialogTrigger asChild>
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  disabled={
+                                                    reactivateUserMutation.isPending
+                                                  }
+                                                  className="text-green-600 border-green-200 hover:bg-green-50"
+                                                >
+                                                  <UserCheck className="h-4 w-4" />
+                                                </Button>
+                                              </AlertDialogTrigger>
+                                              <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                  <AlertDialogTitle>
+                                                    Reactivate User
+                                                  </AlertDialogTitle>
+                                                  <AlertDialogDescription>
+                                                    Are you sure you want to
+                                                    reactivate user "
+                                                    {user.full_name}"? They will
+                                                    be able to log in again and
+                                                    access the system.
+                                                  </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                  <AlertDialogCancel>
+                                                    Cancel
+                                                  </AlertDialogCancel>
+                                                  <AlertDialogAction
+                                                    onClick={() =>
+                                                      reactivateUserMutation.mutate(
+                                                        user.id
+                                                      )
+                                                    }
+                                                    className="bg-green-600 text-white hover:bg-green-700"
+                                                  >
+                                                    Reactivate
+                                                  </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                              </AlertDialogContent>
+                                            </AlertDialog>
+                                          </div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                  No inactive users found.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </Button>
                     <Button
@@ -862,15 +1118,17 @@ export default function UserManagement() {
                             size="sm"
                             disabled={deleteUserMutation.isPending}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <UserX className="h-4 w-4 text-destructive" />
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                            <AlertDialogTitle>Deactivate User</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete user "
-                              {user.full_name}"? This action cannot be undone.
+                              Are you sure you want to deactivate user "
+                              {user.full_name}"? They will no longer be able to
+                              log in, but their data will be preserved. Only
+                              owners can reactivate deactivated users.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -879,7 +1137,7 @@ export default function UserManagement() {
                               onClick={() => deleteUserMutation.mutate(user.id)}
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             >
-                              Delete
+                              Deactivate
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>
@@ -890,6 +1148,126 @@ export default function UserManagement() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Inactive Users Section - Owner Only */}
+      {hasRole('owner') && (
+        <div className="mt-8 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold text-muted-foreground">
+                Inactive Users
+              </h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowInactiveUsers(!showInactiveUsers)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {showInactiveUsers ? (
+                <>
+                  <EyeOff className="h-4 w-4 mr-2" />
+                  Hide
+                </>
+              ) : (
+                <>
+                  <Eye className="h-4 w-4 mr-2" />
+                  Show ({inactiveUsers?.length || 0})
+                </>
+              )}
+            </Button>
+          </div>
+
+          {showInactiveUsers && (
+            <div className="space-y-4">
+              {inactiveUsersLoading ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  Loading inactive users...
+                </div>
+              ) : inactiveUsers && inactiveUsers.length > 0 ? (
+                <div className="grid gap-4">
+                  {inactiveUsers.map((user) => (
+                    <Card
+                      key={user.id}
+                      className="border-dashed border-muted-foreground/30"
+                    >
+                      <CardContent className="pt-6">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-2 flex-1">
+                            <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
+                              <h3 className="font-semibold text-muted-foreground">
+                                {user.full_name}
+                              </h3>
+                              <Badge variant="secondary" className="bg-muted">
+                                {getRoleDisplayName(user.role)}
+                              </Badge>
+                              <Badge variant="destructive" className="text-xs">
+                                Inactive
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {user.email}
+                            </p>
+                            {user.branches && (
+                              <p className="text-sm text-muted-foreground">
+                                Branch: {user.branches.name}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={reactivateUserMutation.isPending}
+                                  className="border-green-200 text-green-700 hover:bg-green-50"
+                                >
+                                  <UserCheck className="h-4 w-4 mr-2" />
+                                  Reactivate
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Reactivate User
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to reactivate "
+                                    {user.full_name}"? This will restore their
+                                    access to the system and they will be able
+                                    to log in again.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() =>
+                                      reactivateUserMutation.mutate(user.id)
+                                    }
+                                    className="bg-green-600 text-white hover:bg-green-700"
+                                  >
+                                    Reactivate
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  No inactive users found.
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

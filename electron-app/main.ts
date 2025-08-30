@@ -307,9 +307,39 @@ function createWindow() {
     },
   })
 
-  // Hide menu bar
+  // Hide menu bar and disable context menu for main window
   win.setMenuBarVisibility(false)
   win.setMenu(null)
+
+  // Handle new window creation (for print windows, etc.)
+  win.webContents.setWindowOpenHandler(() => {
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        icon: iconPath, // Use the same icon as main window
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          devTools: false, // Always disable devTools for new windows
+        },
+        autoHideMenuBar: true,
+        menuBarVisible: false,
+        titleBarStyle: 'default',
+      }
+    }
+  })
+
+  // Handle new window creation event to further customize
+  win.webContents.on('did-create-window', (childWindow: BrowserWindow) => {
+    // Ensure menu is hidden for all new windows
+    childWindow.setMenuBarVisibility(false)
+    childWindow.setMenu(null)
+    
+    // Disable context menu for new windows
+    childWindow.webContents.on('context-menu', (event) => {
+      event.preventDefault()
+    })
+  })
 
   // Open DevTools in detached mode for debugging
   if(!app.isPackaged) {

@@ -385,10 +385,10 @@ export function useVoidSale() {
           organization_id: saleData.organization_id,
           branch_id: saleData.branch_id,
           user_id: user.id,
-          activity_type: 'void',
+          activity_type: 'delete',
           entity_type: 'sale',
           entity_id: saleId,
-          description: `Voided sale for ${saleData.customer_name || 'customer'}`,
+          description: `Deleted sale for ${saleData.customer_name || 'customer'}`,
           old_values: saleData,
           new_values: data,
           metadata: {

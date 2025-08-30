@@ -29,6 +29,17 @@ export function PasswordReset() {
   useEffect(() => {
     if (!user) {
       navigate('/login', { replace: true });
+      return;
+    }
+
+    // Check if user is inactive
+    if (user.profile?.is_active === false) {
+      toast.error('Your account has been deactivated. You cannot change your password.', {
+        duration: 6000,
+        description: 'Please contact your administrator for assistance.',
+      });
+      navigate('/login', { replace: true });
+      return;
     }
   }, [user, navigate]);
 
@@ -96,6 +107,16 @@ export function PasswordReset() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check if user is inactive before proceeding
+    if (user?.profile?.is_active === false) {
+      toast.error('Your account has been deactivated. You cannot change your password.', {
+        duration: 6000,
+        description: 'Please contact your administrator for assistance.',
+      });
+      navigate('/login', { replace: true });
+      return;
+    }
 
     if (newPassword !== confirmPassword) {
       toast.error('New passwords do not match');

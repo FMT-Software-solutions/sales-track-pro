@@ -8,7 +8,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Download, Printer, ReceiptText, AlertTriangle, XCircle } from 'lucide-react';
+import {
+  Download,
+  Printer,
+  ReceiptText,
+  AlertTriangle,
+  XCircle,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { useOrganization } from '@/contexts/OrganizationContext';
 
@@ -42,7 +48,7 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Receipt - ${sale.id}</title>
+          <title>Receipt - ${sale.id.slice(-8).toUpperCase()}</title>
           <style>
             body {
               font-family: 'Courier New', monospace;
@@ -156,7 +162,7 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
         <!DOCTYPE html>
         <html>
           <head>
-            <title>Receipt - ${sale.id}</title>
+            <title>Receipt - ${sale.id.slice(-8).toUpperCase()}</title>
             <style>
               body {
                 font-family: 'Courier New', monospace;
@@ -292,7 +298,8 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
                 {currentOrganization?.name || 'Sales Track Pro'}
               </div>
               <div className="branch-info text-xs mb-1">
-                Location: {sale.branches?.name || 'Unknown Branch'}, {sale.branches?.location || 'Location not specified'}
+                Location: {sale.branches?.name || 'Unknown Branch'},{' '}
+                {sale.branches?.location || 'Location not specified'}
               </div>
               {sale.branches?.contact && (
                 <div className="branch-info text-xs">
@@ -300,18 +307,6 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
                 </div>
               )}
             </div>
-
-            {/* Status Banner */}
-            {sale.status === 'voided' && (
-              <div className="status-banner voided bg-red-50 border-2 border-red-500 text-red-600 text-center p-2 my-2 font-bold text-xs">
-                ⚠️ VOIDED TRANSACTION ⚠️
-              </div>
-            )}
-            {sale.status === 'corrected' && (
-              <div className="status-banner corrected bg-yellow-50 border-2 border-yellow-500 text-yellow-600 text-center p-2 my-2 font-bold text-xs">
-                📝 UPDATED TRANSACTION 📝
-              </div>
-            )}
 
             <div className="receipt-info mb-4">
               <div className="flex justify-between text-xs mb-1">
@@ -328,7 +323,6 @@ export function ReceiptGenerator({ sale }: ReceiptGeneratorProps) {
                   {format(new Date(sale.created_at || sale.sale_date), 'HH:mm')}
                 </span>
               </div>
-
             </div>
 
             <div className="items border-t border-b border-dashed border-black py-2 my-4">

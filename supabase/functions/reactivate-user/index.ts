@@ -38,16 +38,16 @@ serve(async (req) => {
       )
     }
 
-    // Check if the user has required permissions
+    // Check if the user has required permissions (only owners can reactivate users)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (profileError || !['owner', 'admin', 'branch_manager'].includes(profile?.role)) {
+    if (profileError || profile?.role !== 'owner') {
       return new Response(
-        JSON.stringify({ error: 'Unauthorized. You do not have required permissions to perform this action.' }),
+        JSON.stringify({ error: 'Unauthorized. Only owners can reactivate users.' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -63,33 +63,33 @@ serve(async (req) => {
       )
     }
 
-    // Prevent admin from deleting themselves
-    if (userId === user.id) {
-      return new Response(
-        JSON.stringify({ error: 'Cannot delete your own account' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
     // Check if user exists and get their info
-    const { data: userToDelete, error: userError } = await supabaseAdmin
+    const { data: userToReactivate, error: userError } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single()
 
-    if (userError || !userToDelete) {
+    if (userError || !userToReactivate) {
       return new Response(
         JSON.stringify({ error: 'User not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Deactivate the user instead of deleting permanently
-    // 1. Set is_active to false in profiles table
+    // Check if user is already active
+    if (userToReactivate.is_active === true) {
+      return new Response(
+        JSON.stringify({ error: 'User is already active' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Reactivate the user
+    // 1. Set is_active to true in profiles table
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
-      .update({ is_active: false })
+      .update({ is_active: true })
       .eq('id', userId)
 
     if (profileUpdateError) {
@@ -99,10 +99,10 @@ serve(async (req) => {
       )
     }
 
-    // 2. Set is_active to false in user_organizations table
+    // 2. Set is_active to true in user_organizations table
     const { error: orgError } = await supabaseAdmin
       .from('user_organizations')
-      .update({ is_active: false })
+      .update({ is_active: true })
       .eq('user_id', userId)
 
     if (orgError) {
@@ -112,14 +112,17 @@ serve(async (req) => {
       )
     }
 
-    // 3. Update auth user metadata to mark as inactive
+    // 3. Update auth user metadata to mark as active
     const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(
       userId,
       {
         user_metadata: {
-          is_active: false,
-          deactivated_at: new Date().toISOString(),
-          deactivated_by: user.id
+          is_active: true,
+          reactivated_at: new Date().toISOString(),
+          reactivated_by: user.id,
+          // Clear deactivation metadata
+          deactivated_at: null,
+          deactivated_by: null
         }
       }
     )
@@ -134,7 +137,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `User ${userToDelete.full_name} (${userToDelete.email}) has been deactivated successfully`
+        message: `User ${userToReactivate.full_name} (${userToReactivate.email}) has been reactivated successfully`
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

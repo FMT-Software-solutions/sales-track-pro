@@ -15,7 +15,7 @@ export function RoleGuard({
 }: RoleGuardProps) {
   const { profile } = useAuth();
 
-  if (!profile || !allowedRoles.includes(profile.role)) {
+  if (!profile || profile.is_active === false || !allowedRoles.includes(profile.role)) {
     return <>{fallback}</>;
   }
 
@@ -27,11 +27,11 @@ export function useRoleCheck() {
   const { profile } = useAuth();
 
   const hasRole = (role: UserRole) => {
-    return profile?.role === role;
+    return profile?.role === role && profile?.is_active !== false;
   };
 
   const hasAnyRole = (roles: UserRole[]) => {
-    return profile ? roles.includes(profile.role) : false;
+    return profile && profile.is_active !== false ? roles.includes(profile.role) : false;
   };
 
   // Role hierarchy helpers

@@ -8,9 +8,10 @@ interface AuthState {
   setUser: (user: AuthUser | null) => void;
   setLoading: (loading: boolean) => void;
   initialize: () => Promise<void>;
+  checkUserStatus: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   setUser: (user) => set({ user }),
@@ -42,6 +43,14 @@ export const useAuthStore = create<AuthState>((set) => ({
           console.error('Profile fetch error:', profileError);
         }
 
+        // Check if user is active
+        if (profile && profile.is_active === false) {
+          console.warn('Inactive user attempted to access application');
+          await supabase.auth.signOut();
+          set({ user: null, loading: false });
+          return;
+        }
+
         // Fetch user organizations separately
         const { data: userOrganizations, error: orgError } = await supabase
           .from('user_organizations')
@@ -54,7 +63,8 @@ export const useAuthStore = create<AuthState>((set) => ({
               name
             )
           `)
-          .eq('user_id', session.user.id);
+          .eq('user_id', session.user.id)
+          .eq('is_active', true); // Only fetch active organization memberships
 
         if (orgError) {
           console.error('User organizations fetch error:', orgError);
@@ -82,6 +92,35 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ user: null });
     } finally {
       set({ loading: false });
+    }
+  },
+  checkUserStatus: async () => {
+    const { user } = get();
+    if (!user) return;
+
+    try {
+      // Fetch current user profile to check if still active
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('is_active')
+        .eq('id', user.id)
+        .single();
+
+      if (error) {
+        console.error('Error checking user status:', error);
+        return;
+      }
+
+      // If user is now inactive, sign them out
+      if (profile && profile.is_active === false) {
+        console.warn('User has been deactivated, signing out...');
+        await supabase.auth.signOut();
+        set({ user: null });
+        // Force page reload to redirect to login
+        window.location.href = '/login';
+      }
+    } catch (error) {
+      console.error('Error in user status check:', error);
     }
   },
 }));

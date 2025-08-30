@@ -8,6 +8,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { useAuthStore } from '@/stores/auth';
+import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { OrganizationProvider } from '@/contexts/OrganizationContext';
@@ -150,6 +151,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Router>
+      <ConnectionStatus />
       <Toaster />
     </QueryClientProvider>
   );
