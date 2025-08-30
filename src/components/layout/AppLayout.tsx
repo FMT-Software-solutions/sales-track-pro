@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth';
 import { signOut } from '@/lib/auth';
 import { OrganizationSelector } from '@/components/OrganizationSelector';
 import { useRoleCheck } from '@/components/auth/RoleGuard';
+import { HelpDrawer } from '@/components/layout/HelpDrawer';
 import {
   LayoutDashboard,
   Building2,
@@ -16,7 +17,8 @@ import {
   LogOut,
   RefreshCw,
   Users,
-  Activity,
+  Logs,
+  HelpCircle,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -29,7 +31,7 @@ const navigation = [
   { name: 'Sales', href: '/sales', icon: Plus },
   { name: 'Expenses', href: '/expenses', icon: Minus },
   { name: 'Reports', href: '/reports', icon: FileText },
-  { name: 'Activities', href: '/activities', icon: Activity, role: 'manager' },
+  { name: 'Activity logs', href: '/activities', icon: Logs, role: 'manager' },
   { name: 'User Management', href: '/users', icon: Users, role: 'admin' },
   { name: 'Profile & Settings', href: '/settings', icon: Settings },
 ];
@@ -64,7 +66,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const filteredNavigation = navigation.filter((item) => {
     if (!item.role) return true;
     if (item.name === 'User Management') return canManageBranchData();
-    if (item.name === 'Activities')
+    if (item.name === 'Activity logs')
       return canViewAllData() || isBranchManager();
     return item.role === 'admin' && canManageAllData();
   });
@@ -140,10 +142,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
       {/* Main content */}
       <div className="pl-16 md:pl-64 transition-all duration-200">
-        {/* Top header with organization selector */}
-        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
+        {/* Top header with help and organization selector */}
+        <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4 sticky top-0">
           <div className="flex items-center justify-between">
-            <div className="flex-1" />
+            <div className="flex items-center">
+              <HelpDrawer>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                  <span className="hidden sm:inline">Help</span>
+                </Button>
+              </HelpDrawer>
+            </div>
             <div className="flex items-center space-x-3">
               <Button
                 variant="ghost"

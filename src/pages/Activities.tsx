@@ -281,7 +281,7 @@ export default function Activities() {
                           <td className="px-3 py-2">
                             <div>
                               <p className="font-medium">
-                                {item.product_name || 'Unknown Product'}
+                                {item.product_name || item.products?.name || 'Unknown Product'}
                               </p>
                               {item.description && (
                                 <p className="text-xs text-gray-500">

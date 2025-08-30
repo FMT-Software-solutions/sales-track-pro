@@ -53,17 +53,21 @@ export function formatActivityDate(dateValue: string | null | undefined): string
 /**
  * Formats sale line items for display
  */
-export function formatSaleLineItems(items: SaleLineItemSnapshot[] | null | undefined): string {
+export function formatSaleLineItems(items: SaleLineItemSnapshot[] | any[] | null | undefined): string {
   if (!items || items.length === 0) return 'No items';
   
   if (items.length === 1) {
     const item = items[0];
-    return `${item.product_name || 'Unknown Product'} (Qty: ${item.quantity || 0}, ${formatCurrency(item.unit_price)})`;
+    // Handle both nested products structure and flattened product_name structure
+    const productName = item.product_name || item.products?.name || 'Unknown Product';
+    return `${productName} (Qty: ${item.quantity || 0}, ${formatCurrency(item.unit_price)})`;
   }
   
-  return `${items.length} - ${items.map(item => 
-    `${item.product_name || 'Unknown Product'} (${item.quantity || 0})`
-  ).join(', ')}`;
+  return `${items.length} items: ${items.map(item => {
+    // Handle both nested products structure and flattened product_name structure
+    const productName = item.product_name || item.products?.name || 'Unknown Product';
+    return `${productName} (${item.quantity || 0})`;
+  }).join(', ')}`;
 }
 
 /**
@@ -323,6 +327,9 @@ export function formatActivityValues(values: ActivityValue | null | undefined, e
               .map(([field, _]) => field)
               .join(', ');
             parts.push(`${friendlyLabel}: ${changesList || 'None'}`);
+          } else if (key === 'items' && Array.isArray(value)) {
+            // Special handling for items array
+            parts.push(`${friendlyLabel}: ${formatSaleLineItems(value)}`);
           } else if (typeof value === 'object') {
             // Skip other complex objects to avoid JSON display
             parts.push(`${friendlyLabel}: [Object]`);

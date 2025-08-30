@@ -40,6 +40,7 @@ import { MultipleSaleForm } from '@/components/forms/MultipleSaleForm';
 import { SalesItemsManager } from '@/components/sales/SalesItemsManager';
 import { ReceiptGenerator } from '@/components/sales/ReceiptGenerator';
 import { SalesItemsDisplay } from '@/components/ui/SalesItemsDisplay';
+import { SaleClosingDrawer } from '@/components/sales/SaleClosingDrawer';
 import { DatePresets, DateRange } from '@/components/ui/DatePresets';
 import {
   Dialog,
@@ -58,7 +59,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ClipboardPenLine, History, Search, Trash2 } from 'lucide-react';
+import { ClipboardPenLine, History, Search, Trash2, Lock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { formatActivityValues } from '@/utils/activityFormatters';
@@ -103,6 +104,7 @@ export default function Sales() {
   const [isVoidDialogOpen, setIsVoidDialogOpen] = useState(false);
   const [activityLogSale, setActivityLogSale] = useState<Sale | null>(null);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
+  const [isSaleClosingDrawerOpen, setIsSaleClosingDrawerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const limit = 10;
 
@@ -240,6 +242,9 @@ export default function Sales() {
   const canCorrectThisSale = (sale: Sale) => {
     if (!canCorrectSales()) return false;
 
+    // Cannot edit closed sales
+    if (sale.closed) return false;
+
     if (canEditSales()) return true;
 
     return sale.is_active !== false && sale.created_by === user?.id;
@@ -253,11 +258,26 @@ export default function Sales() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Sales</h1>
-        <p className="text-muted-foreground">
-          Record and manage all sales entries.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Sales</h1>
+          <p className="text-muted-foreground">
+            Record and manage all sales entries.
+          </p>
+        </div>
+        {(user?.profile?.role === 'owner' ||
+          user?.profile?.role === 'admin' ||
+          user?.profile?.role === 'branch_manager' ||
+          user?.profile?.role === 'sales_person') && (
+          <Button
+            onClick={() => setIsSaleClosingDrawerOpen(true)}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Lock className="h-4 w-4" />
+            Close Sales
+          </Button>
+        )}
       </div>
 
       <Tabs
@@ -422,7 +442,7 @@ export default function Sales() {
                           <ReceiptGenerator sale={sale} />
                         </TableCell>
                         <TableCell>
-                          <div className="flex gap-1 flex-wrap">
+                          <div className="flex gap-1 flex-wrap items-center">
                             {canCorrectThisSale(sale) && (
                               <Button
                                 variant="outline"
@@ -454,6 +474,11 @@ export default function Sales() {
                             >
                               <History className="h-4 w-4" />
                             </Button>
+                            {sale.closed && (
+                              <span className="text-gray-400 text-[10px]">
+                                closed
+                              </span>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -817,6 +842,12 @@ export default function Sales() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Sale Closing Drawer */}
+      <SaleClosingDrawer
+        open={isSaleClosingDrawerOpen}
+        onOpenChange={setIsSaleClosingDrawerOpen}
+      />
     </div>
   );
 }

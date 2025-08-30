@@ -414,25 +414,121 @@ export function useCloseSalesPeriod() {
 
   return useMutation({
     mutationFn: async ({
-      startDate,
-      endDate,
-      branchId
+      saleIds,
+      organizationId,
+      closingReason = 'Period closed',
+      userId
     }: {
-      startDate: string;
-      endDate: string;
-      branchId?: string;
+      saleIds: string[];
+      organizationId: string;
+      closingReason?: string;
+      userId?: string;
     }) => {
       const { data, error } = await supabase.rpc('close_sales_period', {
-        p_start_date: startDate,
-        p_end_date: endDate,
-        p_branch_id: branchId
+        sale_ids: saleIds,
+        organization_id: organizationId,
+        closing_reason: closingReason
       });
 
       if (error) throw error;
+
+      // Log activity for each closed sale after successful function call
+      if (data && data.length > 0 && data[0].closed_sale_ids && data[0].closed_sale_ids.length > 0) {
+        const closedSaleIds = data[0].closed_sale_ids;
+        
+        // Get sale details for activity logging
+        const { data: salesData } = await supabase
+          .from('sales')
+          .select(`id, branch_id, customer_name, amount, 
+            sale_line_items (
+              id,
+              quantity,
+              unit_price,
+              total_price,
+              products (
+                id,
+                name,
+                price
+              )
+            ) 
+          `)
+          .in('id', closedSaleIds) as {
+            data: Array<{
+              id: string;
+              branch_id: string;
+              customer_name: string | null;
+              amount: number;
+              sale_line_items: Array<{
+                id: string;
+                quantity: number;
+                unit_price: number;
+                total_price: number;
+                products: {
+                  id: string;
+                  name: string;
+                  price: number;
+                } | null;
+              }>;
+            }> | null;
+            error: any;
+          };
+
+        if (salesData && salesData.length > 0) {
+          // Prepare bulk activity log data
+          const activityLogData = salesData.map(sale => {
+            // Build detailed description with sale items
+             let itemsDescription = '';
+             if (sale.sale_line_items && sale.sale_line_items.length > 0) {
+               const itemDetails = sale.sale_line_items.map(item => 
+                 `${item.products?.name || 'Unknown item'} (Qty: ${item.quantity}, Unit: $${item.unit_price?.toFixed(2)}, Total: $${item.total_price?.toFixed(2)})`
+               ).join(', ');
+               itemsDescription = ` - Items: ${itemDetails}`;
+             }
+            
+            const description = `Sale closed: ${itemsDescription} - Total Amount: $${sale.amount?.toFixed(2)} - ${closingReason}`;
+            
+            return {
+              organization_id: organizationId,
+              branch_id: sale.branch_id,
+              user_id: userId,
+              activity_type: 'closed',
+              entity_type: 'sale',
+              entity_id: sale.id,
+              sale_id: sale.id,
+              description,
+              metadata: {
+                closing_reason: closingReason,
+                amount: sale.amount,
+                items: sale.sale_line_items?.map(item => ({
+                  product_name: item.products?.name,
+                  quantity: item.quantity,
+                  unit_price: item.unit_price,
+                  total_price: item.total_price
+                })),
+                customer: sale.customer_name || 'Unknown'
+              },
+              new_values: {...sale, closed: "Yes", closing_reason: closingReason},
+              old_values: sale
+            };
+          });
+
+          // Perform bulk insert for all activity logs
+          const { error: activityError } = await supabase
+            .from('activities_log')
+            .insert(activityLogData);
+
+          if (activityError) {
+            console.error('Failed to log activities:', activityError);
+            // Don't throw here to avoid breaking the main operation
+          }
+        }
+      }
+
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
+      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
     },
   });
 }
