@@ -1,19 +1,12 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '../lib/supabase';
+import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { useAuth } from '@/hooks/useAuth';
-import { useOrganization } from '../contexts/OrganizationContext';
-import { useCreateActivityLog } from '../hooks/queries';
+import { UserRole } from '@/lib/auth';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, Copy, Edit, Eye, EyeOff, UserPlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
 import { Card, CardContent } from '../components/ui/card';
 import {
   Dialog,
@@ -23,33 +16,28 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '../components/ui/alert-dialog';
-import { Badge } from '../components/ui/badge';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
 import {
-  UserPlus,
-  Edit,
-  Eye,
-  EyeOff,
-  Copy,
-  Check,
-  RotateCcwKey,
-  UserCheck,
-  Users,
-  UserX,
-} from 'lucide-react';
-import { toast } from 'sonner';
-import { UserRole } from '@/lib/auth';
-import { useRoleCheck } from '@/components/auth/RoleGuard';
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from '../components/ui/pagination';
+import InactiveUsersSection from '../components/user-management/InactiveUsersSection';
+import UserActionDialogs from '../components/user-management/UserActionDialogs';
+import { useOrganization } from '../contexts/OrganizationContext';
+import { useCreateActivityLog } from '../hooks/queries';
+import { supabase } from '../lib/supabase';
 
 interface User {
   id: string;
@@ -91,7 +79,6 @@ export default function UserManagement() {
     canManageBranchData,
     isBranchManager,
     isOwner,
-    hasRole,
   } = useRoleCheck();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -112,7 +99,20 @@ export default function UserManagement() {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
-  const [showInactiveUsers, setShowInactiveUsers] = useState(false);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const usersPerPage = 5;
+
+  // Initialize UserActionDialogs component
+  const userActionDialogs = UserActionDialogs({
+    onPasswordRegenerated: (password: string) => {
+      setTempPassword(password);
+      setPasswordCopied(false);
+      setShowPassword(false);
+      setIsCreateDialogOpen(true); // Reuse the create dialog to show the password
+    },
+  });
 
   // Get current organization from context
 
@@ -174,44 +174,17 @@ export default function UserManagement() {
     enabled: canManageBranchData() && !!currentOrganization,
   });
 
-  // Fetch inactive users (owner only)
-  const { data: inactiveUsers, isLoading: inactiveUsersLoading } = useQuery({
-    queryKey: ['inactive-users', currentOrganization?.id, profile?.role],
-    queryFn: async () => {
-      if (!currentOrganization) {
-        throw new Error('User not associated with any organization');
-      }
+  // Reset pagination when users change (create, delete, etc.)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [users?.length]);
 
-      // Get all inactive users in the same organization
-      const { data: orgUsers, error: orgUsersError } = await supabase
-        .from('user_organizations')
-        .select('user_id')
-        .eq('organization_id', currentOrganization.id)
-        .eq('is_active', false);
-
-      if (orgUsersError) throw orgUsersError;
-
-      const userIds = orgUsers?.map((ou) => ou.user_id) || [];
-
-      // Build query for inactive profiles
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select(
-          `
-          *,
-          branches(name)
-        `
-        )
-        .in('id', userIds)
-        .eq('is_active', false)
-        .order('full_name');
-
-      if (profilesError) throw profilesError;
-
-      return profilesData as User[];
-    },
-    enabled: isOwner() && !!currentOrganization,
-  });
+  // Calculate pagination values
+  const totalUsers = users?.length || 0;
+  const totalPages = Math.ceil(totalUsers / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const paginatedUsers = users?.slice(startIndex, endIndex) || [];
 
   // Fetch branches
   const { data: branches } = useQuery({
@@ -321,160 +294,6 @@ export default function UserManagement() {
     },
   });
 
-  // Reactivate user mutation
-  const reactivateUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      // Get user data before reactivation for logging
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select(
-          `
-          *,
-          branches(name)
-        `
-        )
-        .eq('id', userId)
-        .single();
-
-      // Get current session for authorization
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session?.access_token) throw new Error('No access token');
-
-      // Call the reactivate-user edge function
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reactivate-user`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId,
-          }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to reactivate user');
-      }
-
-      const result = await response.json();
-
-      // Log the activity
-      if (currentUser && userData) {
-        await createActivityLog.mutateAsync({
-          organization_id: currentOrganization?.id || '',
-          branch_id: userData.branch_id || null,
-          user_id: currentUser.id,
-          activity_type: 'update',
-          entity_type: 'user',
-          entity_id: userId,
-          description: `Reactivated user: ${userData.full_name} (${userData.email})`,
-          new_values: {
-            is_active: true,
-            reactivated_at: new Date().toISOString(),
-            reactivated_by: currentUser.id,
-          },
-          metadata: {
-            email: userData.email,
-            role: userData.role,
-          },
-        });
-      }
-
-      return result;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['inactive-users'] });
-      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
-      toast.success('User reactivated successfully!');
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
-
-  // Delete user mutation (now deactivates instead)
-  const deleteUserMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      // Get user data before deactivation for logging (including branch name)
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select(
-          `
-          *,
-          branches(name)
-        `
-        )
-        .eq('id', userId)
-        .single();
-
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session?.access_token) throw new Error('No access token');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ userId }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete user');
-      }
-
-      // Log the activity
-      if (currentUser && userData && currentOrganization) {
-        // Enhance old values with branch name for better display
-        const enhancedOldValues = {
-          ...userData,
-          branch_name: userData.branches?.name || null,
-        };
-
-        await createActivityLog.mutateAsync({
-          organization_id: currentOrganization.id,
-          branch_id: userData.branch_id,
-          user_id: currentUser.id,
-          activity_type: 'update',
-          entity_type: 'user',
-          entity_id: userId,
-          description: `Deactivated user: ${userData.full_name} (${userData.email})`,
-          old_values: enhancedOldValues,
-          new_values: {
-            ...enhancedOldValues,
-            is_active: false,
-            deactivated_at: new Date().toISOString(),
-            deactivated_by: currentUser.id,
-          },
-          metadata: {
-            email: userData.email,
-            role: userData.role,
-          },
-        });
-      }
-
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      queryClient.invalidateQueries({ queryKey: ['inactive-users'] });
-      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
-      toast.success('User deactivated successfully!');
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
-
   // Update user mutation
   const updateUserMutation = useMutation({
     mutationFn: async ({
@@ -557,82 +376,6 @@ export default function UserManagement() {
     },
   });
 
-  // Regenerate password mutation
-  const regeneratePasswordMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      // Get old user data for activity logging (including branch name)
-      const { data: oldUserData } = await supabase
-        .from('profiles')
-        .select(
-          `
-          *,
-          branches(name)
-        `
-        )
-        .eq('id', userId)
-        .single();
-
-      const { data: session } = await supabase.auth.getSession();
-      if (!session.session?.access_token) throw new Error('No access token');
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/regenerate-password`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${session.session.access_token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ userId }),
-        }
-      );
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to regenerate password');
-      }
-
-      const result = await response.json();
-
-      // Log the activity
-      if (currentUser && oldUserData && currentOrganization) {
-        // Enhance old values with branch name for better display
-        const enhancedOldValues = {
-          ...oldUserData,
-          branch_name: oldUserData.branches?.name || null,
-        };
-
-        await createActivityLog.mutateAsync({
-          organization_id: currentOrganization.id,
-          branch_id: oldUserData.branch_id,
-          user_id: currentUser.id,
-          activity_type: 'update',
-          entity_type: 'user',
-          entity_id: userId,
-          description: `Regenerated password for user: ${oldUserData.full_name} (${oldUserData.email})`,
-          old_values: enhancedOldValues,
-          metadata: {
-            email: oldUserData.email,
-            action: 'password_regeneration',
-          },
-        });
-      }
-
-      return result;
-    },
-    onSuccess: (data) => {
-      setTempPassword(data.tempPassword);
-      setPasswordCopied(false);
-      setShowPassword(false);
-      setIsCreateDialogOpen(true); // Reuse the create dialog to show the password
-      queryClient.invalidateQueries({ queryKey: ['activity-logs'] });
-      toast.success('Password regenerated successfully!');
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    },
-  });
-
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -660,10 +403,6 @@ export default function UserManagement() {
         userData: editForm,
       });
     }
-  };
-
-  const handleRegeneratePassword = (userId: string) => {
-    regeneratePasswordMutation.mutate(userId);
   };
 
   const openEditDialog = (user: User) => {
@@ -779,134 +518,6 @@ export default function UserManagement() {
                         <EyeOff className="h-4 w-4" />
                       ) : (
                         <Eye className="h-4 w-4" />
-                      )}
-
-                      {/* Owner-only Inactive Users Section */}
-                      {isOwner() && (
-                        <div className="mt-8">
-                          <div className="flex items-center justify-between mb-4">
-                            <div>
-                              <h2 className="text-lg font-semibold text-muted-foreground">
-                                Inactive Users
-                              </h2>
-                              <p className="text-sm text-muted-foreground">
-                                Users who have been deactivated (Owner access
-                                only)
-                              </p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                setShowInactiveUsers(!showInactiveUsers)
-                              }
-                            >
-                              <Users className="mr-2 h-4 w-4" />
-                              {showInactiveUsers ? 'Hide' : 'Show'} Inactive
-                              Users
-                              {inactiveUsers && inactiveUsers.length > 0 && (
-                                <Badge variant="secondary" className="ml-2">
-                                  {inactiveUsers.length}
-                                </Badge>
-                              )}
-                            </Button>
-                          </div>
-
-                          {showInactiveUsers && (
-                            <div className="space-y-4">
-                              {inactiveUsersLoading ? (
-                                <div className="text-center py-4 text-muted-foreground">
-                                  Loading inactive users...
-                                </div>
-                              ) : inactiveUsers && inactiveUsers.length > 0 ? (
-                                <div className="grid gap-4">
-                                  {inactiveUsers.map((user) => (
-                                    <Card key={user.id} className="opacity-60">
-                                      <CardContent className="pt-6">
-                                        <div className="flex justify-between items-start">
-                                          <div className="space-y-2 flex-1">
-                                            <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
-                                              <h3 className="font-semibold text-muted-foreground">
-                                                {user.full_name}
-                                              </h3>
-                                              <Badge
-                                                className={getRoleBadgeColor(
-                                                  user.role
-                                                )}
-                                              >
-                                                {getRoleDisplayName(user.role)}
-                                              </Badge>
-                                              <Badge variant="destructive">
-                                                Inactive
-                                              </Badge>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground">
-                                              {user.email}
-                                            </p>
-                                            {user.branches && (
-                                              <p className="text-sm text-muted-foreground">
-                                                Branch: {user.branches.name}
-                                              </p>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center space-x-2">
-                                            <AlertDialog>
-                                              <AlertDialogTrigger asChild>
-                                                <Button
-                                                  variant="outline"
-                                                  size="sm"
-                                                  disabled={
-                                                    reactivateUserMutation.isPending
-                                                  }
-                                                  className="text-green-600 border-green-200 hover:bg-green-50"
-                                                >
-                                                  <UserCheck className="h-4 w-4" />
-                                                </Button>
-                                              </AlertDialogTrigger>
-                                              <AlertDialogContent>
-                                                <AlertDialogHeader>
-                                                  <AlertDialogTitle>
-                                                    Reactivate User
-                                                  </AlertDialogTitle>
-                                                  <AlertDialogDescription>
-                                                    Are you sure you want to
-                                                    reactivate user "
-                                                    {user.full_name}"? They will
-                                                    be able to log in again and
-                                                    access the system.
-                                                  </AlertDialogDescription>
-                                                </AlertDialogHeader>
-                                                <AlertDialogFooter>
-                                                  <AlertDialogCancel>
-                                                    Cancel
-                                                  </AlertDialogCancel>
-                                                  <AlertDialogAction
-                                                    onClick={() =>
-                                                      reactivateUserMutation.mutate(
-                                                        user.id
-                                                      )
-                                                    }
-                                                    className="bg-green-600 text-white hover:bg-green-700"
-                                                  >
-                                                    Reactivate
-                                                  </AlertDialogAction>
-                                                </AlertDialogFooter>
-                                              </AlertDialogContent>
-                                            </AlertDialog>
-                                          </div>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center py-8 text-muted-foreground">
-                                  No inactive users found.
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
                       )}
                     </Button>
                     <Button
@@ -1056,235 +667,109 @@ export default function UserManagement() {
       {usersLoading ? (
         <div className="text-center py-8">Loading users...</div>
       ) : (
-        <div className="grid gap-4">
-          {users?.map((user) => (
-            <Card key={user.id}>
-              <CardContent className="pt-6">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-2 flex-1">
-                    <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
-                      <h3 className="font-semibold">{user.full_name}</h3>
-                      <Badge className={getRoleBadgeColor(user.role)}>
-                        {getRoleDisplayName(user.role)}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {user.email}
-                    </p>
-                    {user.branches && (
+        <>
+          <div className="grid gap-4">
+            {paginatedUsers.map((user) => (
+              <Card key={user.id}>
+                <CardContent className="pt-6">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
+                        <h3 className="font-semibold">{user.full_name}</h3>
+                        <Badge className={getRoleBadgeColor(user.role)}>
+                          {getRoleDisplayName(user.role)}
+                        </Badge>
+                      </div>
                       <p className="text-sm text-muted-foreground">
-                        Branch: {user.branches.name}
+                        {user.email}
                       </p>
-                    )}
+                      {user.branches && (
+                        <p className="text-sm text-muted-foreground">
+                          Branch: {user.branches.name}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col md:flex-row justify-center items-baseline space-x-2 space-y-1">
+                      {/* Edit button visibility based on role hierarchy */}
+                      {canShowActionButtons(user) && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDialog(user)}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {/* Regenerate password button visibility based on role hierarchy */}
+                      {canShowActionButtons(user) && (
+                        <userActionDialogs.RegeneratePasswordButton
+                          user={user}
+                        />
+                      )}
+                      {/* Delete button visibility based on role hierarchy */}
+                      {canShowActionButtons(user) && (
+                        <userActionDialogs.DeleteUserButton user={user} />
+                      )}
+                    </div>
                   </div>
-                  <div className="flex flex-col md:flex-row justify-center items-baseline space-x-2 space-y-1">
-                    {/* Edit button visibility based on role hierarchy */}
-                    {canShowActionButtons(user) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDialog(user)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {/* Regenerate password button visibility based on role hierarchy */}
-                    {canShowActionButtons(user) && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={regeneratePasswordMutation.isPending}
-                            title="Regenerate Password"
-                          >
-                            <RotateCcwKey className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>
-                              Regenerate Password
-                            </AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to regenerate the password
-                              for "{user.full_name}"? This will invalidate their
-                              current password and they will need to use the new
-                              temporary password to log in.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleRegeneratePassword(user.id)}
-                            >
-                              Regenerate Password
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                    {/* Delete button visibility based on role hierarchy */}
-                    {canShowActionButtons(user) && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={deleteUserMutation.isPending}
-                          >
-                            <UserX className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Deactivate User</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to deactivate user "
-                              {user.full_name}"? They will no longer be able to
-                              log in. You will need to contact your admin if you
-                              decide to reactive this user.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => deleteUserMutation.mutate(user.id)}
-                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            >
-                              Deactivate
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="mt-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.max(prev - 1, 1))
+                      }
+                      className={
+                        currentPage === 1
+                          ? 'pointer-events-none opacity-50'
+                          : 'cursor-pointer'
+                      }
+                    />
+                  </PaginationItem>
+
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                    (page) => (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          onClick={() => setCurrentPage(page)}
+                          isActive={currentPage === page}
+                          className="cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    )
+                  )}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() =>
+                        setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                      }
+                      className={
+                        currentPage === totalPages
+                          ? 'pointer-events-none opacity-50'
+                          : 'cursor-pointer'
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
+            </div>
+          )}
+        </>
       )}
 
       {/* Inactive Users Section - Owner Only */}
-      {hasRole('owner') && (
-        <div className="mt-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              <h2 className="text-lg font-semibold text-muted-foreground">
-                Inactive Users
-              </h2>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowInactiveUsers(!showInactiveUsers)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {showInactiveUsers ? (
-                <>
-                  <EyeOff className="h-4 w-4 mr-2" />
-                  Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Show ({inactiveUsers?.length || 0})
-                </>
-              )}
-            </Button>
-          </div>
-
-          {showInactiveUsers && (
-            <div className="space-y-4">
-              {inactiveUsersLoading ? (
-                <div className="text-center py-4 text-muted-foreground">
-                  Loading inactive users...
-                </div>
-              ) : inactiveUsers && inactiveUsers.length > 0 ? (
-                <div className="grid gap-4">
-                  {inactiveUsers.map((user) => (
-                    <Card
-                      key={user.id}
-                      className="border-dashed border-muted-foreground/30"
-                    >
-                      <CardContent className="pt-6">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-2 flex-1">
-                            <div className="flex flex-col md:flex-row md:items-center items-start md:space-x-2">
-                              <h3 className="font-semibold text-muted-foreground">
-                                {user.full_name}
-                              </h3>
-                              <Badge variant="secondary" className="bg-muted">
-                                {getRoleDisplayName(user.role)}
-                              </Badge>
-                              <Badge variant="destructive" className="text-xs">
-                                Inactive
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              {user.email}
-                            </p>
-                            {user.branches && (
-                              <p className="text-sm text-muted-foreground">
-                                Branch: {user.branches.name}
-                              </p>
-                            )}
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  disabled={reactivateUserMutation.isPending}
-                                  className="border-green-200 text-green-700 hover:bg-green-50"
-                                >
-                                  <UserCheck className="h-4 w-4 mr-2" />
-                                  Reactivate
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>
-                                    Reactivate User
-                                  </AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to reactivate "
-                                    {user.full_name}"? This will restore their
-                                    access to the system and they will be able
-                                    to log in again.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() =>
-                                      reactivateUserMutation.mutate(user.id)
-                                    }
-                                    className="bg-green-600 text-white hover:bg-green-700"
-                                  >
-                                    Reactivate
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  No inactive users found.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      <InactiveUsersSection />
 
       {/* Edit User Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
@@ -1411,6 +896,9 @@ export default function UserManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* User Action Dialogs */}
+      <userActionDialogs.Dialogs />
     </div>
   );
 }
