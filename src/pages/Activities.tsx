@@ -249,9 +249,9 @@ export default function Activities() {
         )}
 
         {/* Sale Line Items */}
-        {saleData.sale_line_items &&
-          Array.isArray(saleData.sale_line_items) &&
-          saleData.sale_line_items.length > 0 && (
+        {(saleData.sale_line_items || saleData.items) &&
+          Array.isArray(saleData.sale_line_items || saleData.items) &&
+          (saleData.sale_line_items || saleData.items).length > 0 && (
             <div>
               <p className="text-sm text-gray-600 mb-2 font-medium">
                 Items Sold
@@ -275,7 +275,7 @@ export default function Activities() {
                     </tr>
                   </thead>
                   <tbody>
-                    {saleData.sale_line_items.map(
+                    {(saleData.sale_line_items || saleData.items || []).map(
                       (item: any, index: number) => (
                         <tr key={index} className="border-t">
                           <td className="px-3 py-2">

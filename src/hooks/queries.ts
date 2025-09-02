@@ -279,7 +279,6 @@ export function useSales(
 
 export function useCreateSale() {
   const queryClient = useQueryClient();
-  const createActivityLog = useCreateActivityLog();
 
   return useMutation({
     mutationFn: async (
@@ -298,25 +297,6 @@ export function useCreateSale() {
         .single();
 
       if (error) throw error;
-
-      // Log the activity
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await createActivityLog.mutateAsync({
-          organization_id: data.organization_id,
-          branch_id: data.branch_id,
-          user_id: user.id,
-          activity_type: 'create',
-          entity_type: 'sale',
-          entity_id: data.id,
-          description: `Created sale for ${data.customer_name || 'customer'}`,
-          new_values: data,
-          metadata: {
-            amount: data.amount,
-            customer_name: data.customer_name
-          }
-        });
-      }
 
       return data;
     },
@@ -923,20 +903,12 @@ export const useDeleteSalesItem = useDeleteProduct;
 
 export function useUpdateSale() {
   const queryClient = useQueryClient();
-  const createActivityLog = useCreateActivityLog();
 
   return useMutation({
     mutationFn: async ({
       id,
       ...updates
     }: { id: string } & Database['public']['Tables']['sales']['Update']) => {
-      // Get the original sale data before updating
-      const { data: originalSale } = await supabase
-        .from('sales')
-        .select('*')
-        .eq('id', id)
-        .single();
-
       const { data, error } = await supabase
         .from('sales')
         .update(updates)
@@ -944,26 +916,6 @@ export function useUpdateSale() {
         .select()
         .single();
       if (error) throw error;
-
-      // Log the activity
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && originalSale) {
-        await createActivityLog.mutateAsync({
-          organization_id: data.organization_id,
-          branch_id: data.branch_id,
-          user_id: user.id,
-          activity_type: 'update',
-          entity_type: 'sale',
-          entity_id: id,
-          description: `Updated sale for ${data.customer_name || 'customer'}`,
-          old_values: originalSale,
-          new_values: data,
-          metadata: {
-            amount: data.amount,
-            customer_name: data.customer_name
-          }
-        });
-      }
 
       return data;
     },

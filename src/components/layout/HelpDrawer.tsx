@@ -15,7 +15,9 @@ import { HelpCircle, Users, MessageCircle, Mail, Phone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface HelpDrawerProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type HelpSection = 'roles' | 'faq';
@@ -147,9 +149,12 @@ const faqData = [
   },
 ];
 
-export function HelpDrawer({ children }: HelpDrawerProps) {
+export function HelpDrawer({ children, open, onOpenChange }: HelpDrawerProps) {
   const [activeSection, setActiveSection] = useState<HelpSection>('faq');
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  const isOpen = open !== undefined ? open : internalOpen;
+  const setIsOpen = onOpenChange || setInternalOpen;
 
   const sidebarItems = [
     { id: 'faq' as HelpSection, label: 'FAQ', icon: MessageCircle },
@@ -158,11 +163,11 @@ export function HelpDrawer({ children }: HelpDrawerProps) {
 
   return (
     <Drawer open={isOpen} onOpenChange={setIsOpen}>
-      <DrawerTrigger asChild>{children}</DrawerTrigger>
-      <DrawerContent className="h-screen max-h- rounded-none pb-20">
-        <div className="mx-auto w-full max-w-none h-full">
+      {children && <DrawerTrigger asChild>{children}</DrawerTrigger>}
+      <DrawerContent className="h-screen rounded-none pb-20 border-1">
+        <div className="mx-auto w-full max-w-5xl border border-b-0 h-screen">
           <DrawerHeader className="border-b">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between ">
               <div>
                 <DrawerTitle className="flex items-center gap-2">
                   <HelpCircle className="h-5 w-5" />
@@ -185,7 +190,7 @@ export function HelpDrawer({ children }: HelpDrawerProps) {
             </div>
           </DrawerHeader>
 
-          <div className="flex h-full">
+          <div className="flex h-full max-w-5xl mx-auto ">
             {/* Sidebar */}
             <div className="w-64 border-r bg-gray-50 p-4">
               <nav className="space-y-2">
@@ -211,7 +216,7 @@ export function HelpDrawer({ children }: HelpDrawerProps) {
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden pb-20">
               <ScrollArea className="h-full p-6">
                 {activeSection === 'roles' && (
                   <div className="space-y-6">

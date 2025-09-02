@@ -4,17 +4,22 @@ This directory contains the automated release system for SalesTrack Pro Electron
 
 ## Overview
 
-The release system handles:
+The release system is configuration-driven and handles:
+
 - Version management and validation
-- Electron app building and packaging
+- Release configuration management
 - Publishing release information to Supabase
+- GitHub release creation
 - Automatic update checking within the app
+
+**Note**: Building and packaging are done manually before running the release script to ensure proper testing.
 
 ## Quick Start
 
 ### Prerequisites
 
-1. **Environment Variables**: Create a `.env` file in the project root with:
+1. **Environment Variables**: Create a `.env.local` or `.env` file in the project root with:
+
    ```
    VITE_SUPABASE_URL=your_supabase_url
    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
@@ -25,14 +30,19 @@ The release system handles:
    npm install
    ```
 
-3. **Database**: Run the migration to create the `app_versions` table:
-   ```sql
-   -- Run the migration: supabase/migrations/20250107000000_create_app_versions.sql
-   ```
-
 ### Creating a Release
 
-1. **Run the release script**:
+1. **Update the release configuration**:
+
+   - Edit `release/release-config.js`
+   - Update the `version` field (e.g., "1.0.1")
+   - Update the `releaseNotes` with your changes
+   - Verify platform configurations and installer paths
+
+2. **Run the release script**:
+
+   npm `npm run release`
+
    ```bash
    # Windows (Command Prompt)
    release\scripts\release.bat
@@ -44,17 +54,15 @@ The release system handles:
    release/scripts/release.sh
    ```
 
-2. **Follow the prompts**:
-   - Enter the new version number (e.g., 1.0.1)
-   - Provide release notes
-   - Confirm the release details
-
 3. **The script will**:
-   - Update package.json version
-   - Build the Electron application
-   - Package for distribution
-   - Create Git commit and tag
-   - Publish to Supabase as draft
+    - Validate the configuration and environment
+    - Update package.json version
+    - Update CHANGELOG.md
+    - Build the application (electron:build and build:electron)
+    - Package the Electron application with the updated version
+    - Create Git commit and tag
+    - Create GitHub release (if enabled)
+    - Publish to Supabase (if enabled)
 
 ### Managing Releases
 
@@ -76,14 +84,15 @@ node release/scripts/release-manifest.js add 1.0.1 "Bug fixes and improvements"
 Releases are initially created as drafts in Supabase. To make them available for auto-updates:
 
 1. **Update status to published**:
+
    ```bash
    node release/scripts/release-manifest.js update-status 1.0.1 published
    ```
 
 2. **Or update directly in Supabase**:
    ```sql
-   UPDATE app_versions 
-   SET status = 'published' 
+   UPDATE app_versions
+   SET status = 'published'
    WHERE version = '1.0.1';
    ```
 
@@ -123,9 +132,23 @@ The application includes automatic update checking:
 
 ## Configuration
 
+### Release Configuration
+
+The release process is controlled by `release/release-config.js`. Key sections:
+
+- **version**: The version number for the release (e.g., "1.0.1")
+- **releaseNotes**: Markdown-formatted release notes
+- **platforms**: Platform-specific installer paths and patterns
+- **github**: GitHub release settings (enabled/disabled)
+- **supabase**: Supabase publishing settings (enabled/disabled)
+- **build**: Build configuration (disabled by default for manual builds)
+- **git**: Git commit and tag settings
+- **validation**: Validation rules for releases
+
 ### Electron Builder
 
 Configuration is in `electron-builder.yml`:
+
 - Output directory: `dist-electron`
 - Supported platforms: Windows, macOS, Linux
 - Package formats: NSIS (Windows), DMG (macOS), AppImage (Linux)
@@ -133,6 +156,7 @@ Configuration is in `electron-builder.yml`:
 ### Version Comparison
 
 Uses semantic versioning (semver) for version comparison:
+
 - Format: `MAJOR.MINOR.PATCH`
 - Example: `1.0.0` < `1.0.1` < `1.1.0` < `2.0.0`
 
@@ -141,18 +165,23 @@ Uses semantic versioning (semver) for version comparison:
 ### Common Issues
 
 1. **Environment variables not loaded**:
+
    - Ensure `.env` file exists in project root
    - Check variable names match exactly
 
 2. **Supabase connection failed**:
+
    - Verify URL and API key are correct
    - Check network connectivity
    - Ensure RLS policies allow access
 
 3. **Build failures**:
-   - Run `npm run build` first to check for errors
+
+   - Build and package manually before running release script
+   - Run `npm run build` and `npm run package` to check for errors
    - Ensure all dependencies are installed
    - Check Node.js version compatibility
+   - Test the packaged application thoroughly
 
 4. **Version conflicts**:
    - Ensure version doesn't already exist
@@ -162,6 +191,7 @@ Uses semantic versioning (semver) for version comparison:
 ### Debug Mode
 
 Run scripts with debug output:
+
 ```bash
 DEBUG=1 node release/scripts/release.js
 ```
@@ -176,6 +206,7 @@ DEBUG=1 node release/scripts/release.js
 ## Support
 
 For issues with the release process:
+
 1. Check this README for common solutions
 2. Review script output for error messages
 3. Verify environment configuration

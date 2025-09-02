@@ -24,7 +24,7 @@ win:
         - x64
   icon: release/assets/favicon.ico
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
   allowElevation: true
   allowToChangeInstallationDirectory: true

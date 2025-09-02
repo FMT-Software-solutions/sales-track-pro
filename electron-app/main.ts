@@ -70,6 +70,35 @@ function getTempDownloadPath(): string {
   return tempDir
 }
 
+// Helper function to clean up temporary files
+function cleanupTempFiles(): void {
+  try {
+    const tempDir = getTempDownloadPath();
+    if (fs.existsSync(tempDir)) {
+      const files = fs.readdirSync(tempDir);
+      files.forEach(file => {
+        try {
+          const filePath = path.join(tempDir, file);
+          fs.unlinkSync(filePath);
+          console.log('Cleaned up temp file:', filePath);
+        } catch (fileError) {
+          console.log('Could not clean up temp file:', file, fileError);
+        }
+      });
+      
+      // Try to remove the directory if it's empty
+      try {
+        fs.rmdirSync(tempDir);
+        console.log('Cleaned up temp directory:', tempDir);
+      } catch (dirError) {
+        console.log('Could not remove temp directory:', dirError);
+      }
+    }
+  } catch (error) {
+    console.log('Error during temp file cleanup:', error);
+  }
+}
+
 // Helper function to download file with progress tracking
 function downloadFileWithProgress(url: string, filePath: string): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -244,8 +273,22 @@ function registerIPCHandlers() {
         
         // Clean up partial file if it exists
         if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
+          const tempDir = path.dirname(downloadedFilePath);
           fs.unlinkSync(downloadedFilePath);
+          console.log('Cleaned up cancelled download file:', downloadedFilePath);
           downloadedFilePath = null;
+          
+          // Try to clean up the temp directory if it's empty
+          try {
+            const files = fs.readdirSync(tempDir);
+            if (files.length === 0) {
+              fs.rmdirSync(tempDir);
+              console.log('Cleaned up empty temp directory:', tempDir);
+            }
+          } catch (dirError) {
+            // Directory might not be empty or might not exist, ignore
+            console.log('Could not clean up temp directory:', dirError);
+          }
         }
       }
       return { success: true };
@@ -263,9 +306,44 @@ function registerIPCHandlers() {
       
       console.log('Installing update from:', downloadPath);
       
-      // On Windows, open the installer
+      // On Windows, run the installer silently
       if (process.platform === 'win32') {
-        await shell.openPath(downloadPath);
+        const { spawn } = require('child_process');
+        
+        // Run the installer with silent parameters
+        // /S = Silent install, /CLOSEAPPLICATIONS = Close running applications, /RESTARTAPPLICATIONS = Restart applications after install
+        const installer = spawn(downloadPath, ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        
+        installer.unref();
+        
+        // Schedule cleanup of the downloaded file after installer starts
+        // We delay this to ensure the installer has time to read the file
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(downloadPath)) {
+              fs.unlinkSync(downloadPath);
+              console.log('Cleaned up downloaded installer file:', downloadPath);
+            }
+            
+            // Also try to clean up the entire temp directory if it's empty
+            const tempDir = path.dirname(downloadPath);
+            try {
+              const files = fs.readdirSync(tempDir);
+              if (files.length === 0) {
+                fs.rmdirSync(tempDir);
+                console.log('Cleaned up empty temp directory:', tempDir);
+              }
+            } catch (dirError) {
+              // Directory might not be empty or might not exist, ignore
+              console.log('Could not clean up temp directory:', dirError);
+            }
+          } catch (cleanupError) {
+            console.log('Could not clean up downloaded file:', cleanupError);
+          }
+        }, 2000); // Wait 2 seconds to ensure installer has started
         
         // Give the installer a moment to start, then quit the app
         setTimeout(() => {
@@ -277,6 +355,19 @@ function registerIPCHandlers() {
         // For other platforms, you might need different logic
         // For now, just open the file
         await shell.openPath(downloadPath);
+        
+        // Schedule cleanup for non-Windows platforms too
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(downloadPath)) {
+              fs.unlinkSync(downloadPath);
+              console.log('Cleaned up downloaded installer file:', downloadPath);
+            }
+          } catch (cleanupError) {
+            console.log('Could not clean up downloaded file:', cleanupError);
+          }
+        }, 2000);
+        
         app.quit();
         return { success: true };
       }
@@ -383,6 +474,12 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// Clean up temporary files when app is quitting
+app.on('before-quit', () => {
+  console.log('App is quitting, cleaning up temporary files...');
+  cleanupTempFiles();
 })
 
 app.whenReady().then(() => {

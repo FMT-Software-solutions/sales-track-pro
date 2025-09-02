@@ -3,10 +3,20 @@
 const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
-const { createClient } = require('@supabase/supabase-js');
 
 // Load environment variables from .env file
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+const envLocalPath = path.join(__dirname, '../../.env.local');
+const envPath = path.join(__dirname, '../../.env');
+
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+} else {
+  console.warn('Warning: No .env.local or .env file found');
+}
+// Load release configuration
+const releaseConfig = require('../release-config');
 
 const colors = {
   reset: '\x1b[0m',
@@ -28,106 +38,162 @@ const log = {
   header: (msg) => console.log(`\n${colors.bright}${colors.magenta}${msg}${colors.reset}\n`),
 };
 
-async function getSupabaseClient() {
+function validateEnvironment() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Supabase URL and key must be set in environment variables');
+  if (!supabaseUrl) {
+    throw new Error('VITE_SUPABASE_URL environment variable is required');
+  }
+  
+  if (!supabaseServiceKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable is required for publishing');
   }
 
-  return createClient(supabaseUrl, supabaseKey);
+  return { supabaseUrl, supabaseServiceKey };
 }
 
-async function publishToSupabase() {
+function validateReleaseData(config) {
+  const errors = [];
+  
+  if (!config.version) {
+    errors.push('Version is required');
+  }
+  
+  if (!config.releaseNotes) {
+    errors.push('Release notes are required');
+  }
+  
+  if (!config.supabase.enabled) {
+    errors.push('Supabase publishing is not enabled in configuration');
+  }
+  
+  if (!config.supabase.edgeFunction) {
+    errors.push('Edge function name is required');
+  }
+  
+  return errors;
+}
+
+async function callEdgeFunction(config, releaseData) {
+  const { supabaseUrl, supabaseServiceKey } = validateEnvironment();
+  
+  const edgeFunctionUrl = `${supabaseUrl}/functions/v1/${config.supabase.edgeFunction}`;
+  
+  log.step(`Calling Edge Function: ${config.supabase.edgeFunction}`);
+  
+  const response = await fetch(edgeFunctionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'x-client-info': 'food-track-pro-release-script'
+    },
+    body: JSON.stringify(releaseData)
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Edge Function call failed (${response.status}): ${errorText}`);
+  }
+  
+  const result = await response.json();
+  return result;
+}
+
+async function publishToSupabase(version, releaseNotes) {
   try {
-    log.header('📤 Publishing to Supabase');
-
-    const manifestPath = path.join(process.cwd(), 'release', 'release-manifest.json');
+    log.header('📤 Publishing to Supabase via Edge Function');
     
-    if (!fs.existsSync(manifestPath)) {
-      throw new Error('Release manifest not found. Run the release script first.');
-    }
-
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    // Use provided parameters or fall back to config
+    const config = releaseConfig;
+    const targetVersion = version || config.version;
+    const targetReleaseNotes = releaseNotes || config.releaseNotes;
     
-    if (!manifest.releases || manifest.releases.length === 0) {
-      throw new Error('No releases found in manifest');
+    // Validate configuration
+    const validationErrors = validateReleaseData(config);
+    if (validationErrors.length > 0) {
+      log.error('Configuration validation failed:');
+      validationErrors.forEach(error => log.error(`  - ${error}`));
+      throw new Error('Invalid configuration');
     }
-
-    const latestRelease = manifest.releases[0];
-    log.info(`Publishing version ${latestRelease.version}...`);
-
-    const supabase = await getSupabaseClient();
-
-    // Check if version already exists
-    const { data: existingVersion, error: checkError } = await supabase
-      .from('app_versions')
-      .select('*')
-      .eq('version', latestRelease.version)
-      .eq('platform', latestRelease.platform)
-      .eq('architecture', latestRelease.architecture)
-      .single();
-
-    if (checkError && checkError.code !== 'PGRST116') {
-      throw new Error(`Error checking existing version: ${checkError.message}`);
-    }
-
-    if (existingVersion) {
-      log.warning(`Version ${latestRelease.version} already exists in database`);
+    
+    log.info(`Publishing version ${targetVersion}...`);
+    
+    // Prepare platforms array for Edge Function
+    const platforms = [];
+    Object.entries(config.platforms).forEach(([platformName, platformConfig]) => {
+      platforms.push({
+        platform: platformName,
+        architecture: platformConfig.architecture,
+        downloadUrl: platformConfig.downloadUrlTemplate.replaceAll('{version}', targetVersion),
+        fileSize: platformConfig.fileSize || 0,
+        status: platformConfig.status || 'published',
+        isCritical: platformConfig.isCritical || false,
+        minimumVersion: platformConfig.minimumVersion || null
+      });
+      log.info(`  - ${platformName} (${platformConfig.architecture}) [${platformConfig.status || 'published'}]`);
+    });
+    
+    // Prepare release data for Edge Function
+    const releaseData = {
+      version: targetVersion,
+      release_notes: targetReleaseNotes,
+      platforms: platforms 
+    };
+    
+    // Call the Edge Function
+    const result = await callEdgeFunction(config, releaseData);
+    
+    if (result.success) {
+      log.success(`Version ${targetVersion} published successfully`);
       
-      // Update existing version
-      const { error: updateError } = await supabase
-        .from('app_versions')
-        .update({
-          download_url: latestRelease.download_url,
-          file_size: latestRelease.file_size,
-          release_notes: latestRelease.release_notes,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingVersion.id);
-
-      if (updateError) {
-        throw new Error(`Error updating version: ${updateError.message}`);
+      if (result.data) {
+        if (result.data.created) {
+          log.info(`Created new release record with ID: ${result.data.id}`);
+        } else {
+          log.info(`Updated existing release record with ID: ${result.data.id}`);
+        }
+        
+        if (result.data.status) {
+          log.info(`Release status: ${result.data.status}`);
+        }
       }
-
-      log.success(`Version ${latestRelease.version} updated successfully`);
+      
+      if (result.message) {
+        log.info(result.message);
+      }
     } else {
-      // Insert new version
-      const { error: insertError } = await supabase
-        .from('app_versions')
-        .insert([{
-          version: latestRelease.version,
-          platform: latestRelease.platform,
-          architecture: latestRelease.architecture,
-          download_url: latestRelease.download_url,
-          file_size: latestRelease.file_size,
-          release_notes: latestRelease.release_notes,
-          status: 'draft',
-        }]);
-
-      if (insertError) {
-        throw new Error(`Error inserting version: ${insertError.message}`);
-      }
-
-      log.success(`Version ${latestRelease.version} published successfully as draft`);
+      throw new Error(result.error || 'Unknown error from Edge Function');
     }
-
-    log.info('Release published to Supabase database');
-    log.info('Status: Draft (can be published from admin dashboard)');
-
+    
+    log.success('Release published to Supabase successfully');
+    
   } catch (error) {
     log.error(`Failed to publish to Supabase: ${error.message}`);
-    process.exit(1);
+    throw error;
   }
 }
 
 async function main() {
-  await publishToSupabase();
+  try {
+    // When run as standalone script, use config from release-config.js
+    await publishToSupabase();
+    log.success('Publishing completed successfully');
+  } catch (error) {
+    log.error(`Publishing failed: ${error.message}`);
+    process.exit(1);
+  }
 }
 
 if (require.main === module) {
   main();
 }
 
-module.exports = { publishToSupabase };
+module.exports = { 
+  publishToSupabase,
+  validateEnvironment,
+  validateReleaseData,
+  callEdgeFunction
+};

@@ -8,6 +8,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/sonner';
 import { useAuthStore } from '@/stores/auth';
+import { useAutoUpdateCheck } from '@/hooks/useAutoUpdateCheck';
 import { ConnectionStatus } from '@/components/ConnectionStatus';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -22,6 +23,7 @@ import { PasswordReset } from '@/pages/PasswordReset';
 import Sales from './pages/Sales';
 import Expenses from './pages/Expenses';
 import Activities from './pages/Activities';
+// import EdgeFunctionTest from './pages/EdgeFunctionTest';
 // import TestCreateOwner from './pages/TestCreateOwner';
 
 const queryClient = new QueryClient({
@@ -35,6 +37,9 @@ const queryClient = new QueryClient({
 
 function App() {
   const initialize = useAuthStore((state) => state.initialize);
+  
+  // Initialize automatic update checking
+  useAutoUpdateCheck();
 
   useEffect(() => {
     initialize();
@@ -47,6 +52,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/password-reset" element={<PasswordReset />} />
+          {/* <Route path="/edge-function-test" element={<EdgeFunctionTest />} /> */}
           {/* <Route path="/test-create-owner" element={<TestCreateOwner />} /> */}
           <Route
             path="/dashboard"

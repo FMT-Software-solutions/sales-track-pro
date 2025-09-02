@@ -5,8 +5,8 @@ CREATE TABLE IF NOT EXISTS app_versions (
     release_notes TEXT,
     download_url TEXT NOT NULL,
     file_size BIGINT NOT NULL DEFAULT 0,
-    platform VARCHAR(20) NOT NULL DEFAULT 'all', -- 'windows', 'macos', 'linux', 'all'
-    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- 'draft', 'published', 'deprecated'
+    platform VARCHAR(20) NOT NULL DEFAULT 'all', -- 'win32', 'macos', 'linux', 'all'
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', -- 'draft', 'published'    
     is_critical BOOLEAN DEFAULT FALSE, -- Whether this is a critical security update
     minimum_version VARCHAR(50), -- Minimum version required before this update
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -90,6 +90,6 @@ INSERT INTO app_versions (
     'Initial release of SalesTrack Pro with core functionality including sales tracking, expense management, and reporting.',
     'https://github.com/your-org/salestrack-pro/releases/download/v1.0.0/SalesTrack-Pro-Setup-1.0.0.exe',
     52428800, -- ~50MB
-    'windows',
+    'win32',
     'published'
 ) ON CONFLICT (version) DO NOTHING;

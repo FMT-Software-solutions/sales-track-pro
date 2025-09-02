@@ -2,11 +2,20 @@ import { ReactNode, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/auth';
 import { signOut } from '@/lib/auth';
 import { OrganizationSelector } from '@/components/OrganizationSelector';
 import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { HelpDrawer } from '@/components/layout/HelpDrawer';
+import { UpdateDrawer } from '@/components/layout/UpdateDrawer';
+import { useUpdateStore } from '@/stores/updateStore';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   LayoutDashboard,
   Building2,
@@ -19,6 +28,7 @@ import {
   Users,
   Logs,
   HelpCircle,
+  Download,
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -47,6 +57,9 @@ export function AppLayout({ children }: AppLayoutProps) {
     isBranchManager,
   } = useRoleCheck();
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isHelpDrawerOpen, setIsHelpDrawerOpen] = useState(false);
+  const [isUpdateDrawerOpen, setIsUpdateDrawerOpen] = useState(false);
+  const { hasUpdate } = useUpdateStore();
 
   const handleSignOut = async () => {
     try {
@@ -145,17 +158,47 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Top header with help and organization selector */}
         <div className="bg-white border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4 sticky top-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <HelpDrawer>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-                >
-                  <HelpCircle className="h-4 w-4" />
-                  <span className="hidden sm:inline">Help</span>
-                </Button>
-              </HelpDrawer>
+            <div className="flex items-center space-x-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center gap-2 text-gray-600 hover:text-gray-900 relative"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                    <span className="hidden sm:inline">Help</span>
+                    {hasUpdate && (
+                      <Badge
+                        variant="destructive"
+                        className="absolute top-0 right-0 h-2 w-2 p-0 rounded-full"
+                      />
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => setIsHelpDrawerOpen(true)}
+                  >
+                    <HelpCircle className="h-4 w-4 mr-2" />
+                    Help and Support
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer flex items-center"
+                    onClick={() => setIsUpdateDrawerOpen(true)}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Check for updates
+                    {hasUpdate && (
+                      <Badge
+                        variant="destructive"
+                        className="ml-2 h-2 w-2 p-0 rounded-full"
+                      />
+                    )}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <div className="flex items-center space-x-3">
               <Button
@@ -181,6 +224,14 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </main>
       </div>
+
+      <HelpDrawer open={isHelpDrawerOpen} onOpenChange={setIsHelpDrawerOpen} />
+      <UpdateDrawer
+        isOpen={isUpdateDrawerOpen}
+        onOpenChange={setIsUpdateDrawerOpen}
+      >
+        <></>
+      </UpdateDrawer>
     </div>
   );
 }

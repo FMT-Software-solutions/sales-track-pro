@@ -1,26 +1,21 @@
-import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { toast } from 'sonner';
-import { RefreshCw, Download, ExternalLink } from 'lucide-react';
-import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import {
-  VersionInfo,
-  UpdateCheckResult,
-  DownloadProgress,
   AutoUpdateResult,
+  DownloadProgress,
+  UpdateCheckResult,
+  VersionInfo,
 } from '@/types/electron';
+import { AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import { toast } from 'sonner';
 
 interface UpdateSettingsProps {
   className?: string;
@@ -264,14 +259,7 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
   };
 
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>Software Updates</CardTitle>
-        <CardDescription>
-          Check for and install the latest version of SalesTrack Pro
-        </CardDescription>
-      </CardHeader>
-      <Separator className="mt-2 mb-6 bg-gray-300 dark:bg-gray-800" />
+    <Card className={cn('border-none shadow-none p-0', className)}>
       <CardContent className="space-y-6">
         {/* Update Available Alert */}
         {updateInfo && (
@@ -293,10 +281,32 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
 
                 {updateInfo.release_notes && (
                   <div className="text-sm text-blue-700 dark:text-blue-300">
-                    <p className="font-medium mb-1">What's new:</p>
-                    <p className="whitespace-pre-wrap">
-                      {updateInfo.release_notes}
-                    </p>
+                    <p className="font-medium mb-2">What's new:</p>
+                    <ScrollArea className="h-32 w-full rounded border bg-white dark:bg-gray-950 p-3">
+                      <div className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-100 prose-headings:font-semibold prose-h3:text-sm prose-h3:mb-1 prose-h3:mt-3 prose-h3:first:mt-0 prose-ul:my-1 prose-li:my-0.5 prose-p:my-1">
+                        <ReactMarkdown
+                          components={{
+                            h3: ({ children }) => (
+                              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1 mt-3 first:mt-0">
+                                {children}
+                              </h3>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="list-disc list-inside space-y-0.5 my-1">
+                                {children}
+                              </ul>
+                            ),
+                            li: ({ children }) => (
+                              <li className="text-xs leading-relaxed">
+                                {children}
+                              </li>
+                            ),
+                          }}
+                        >
+                          {updateInfo.release_notes}
+                        </ReactMarkdown>
+                      </div>
+                    </ScrollArea>
                   </div>
                 )}
 
@@ -373,19 +383,6 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
                       size="sm"
                     >
                       Cancel
-                    </Button>
-                  )}
-
-                  {!isDownloading && !downloadProgress && (
-                    <Button
-                      onClick={() =>
-                        window.open(updateInfo.download_url, '_blank')
-                      }
-                      variant="outline"
-                      size="sm"
-                    >
-                      <ExternalLink className="mr-2 h-4 w-4" />
-                      Open in Browser
                     </Button>
                   )}
                 </div>

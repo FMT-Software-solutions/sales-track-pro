@@ -458,7 +458,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
           saleId: newSale.id,
           organizationId: currentOrganization.id,
           activityType: 'create',
-          description: `New sale created for ${currentOrganization?.currency || 'GH₵'}${totalAmount.toFixed(2)}${data.customerName ? ` for customer: ${data.customerName}` : ''}`,
+          description: `New sale created. Total amount: ${currentOrganization?.currency || 'GH₵'}${totalAmount.toFixed(2)}${data.customerName ? ` for customer: ${data.customerName}` : ''}`,
           newValues: {
             amount: totalAmount,
             customer_name: data.customerName,
@@ -467,12 +467,21 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
             items: data.items.map(item => ({
               product_id: item.productId,
               quantity: item.quantity,
-              unit_price: item.unitPrice
+              unit_price: item.unitPrice,
+              total_price:   item.unitPrice * item.quantity,
+              product_name: products.find(p => p.id === item.productId)?.name,
             }))
           },
           metadata: {
+            branch_name: userBranches.find(b => b.id === data.branchId)?.name,
             total_items: data.items.length,
-            branch_name: userBranches.find(b => b.id === data.branchId)?.name
+            items: data.items.map(item => ({
+              product_id: item.productId,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+              total_price:   item.unitPrice * item.quantity,
+              product_name: products.find(p => p.id === item.productId)?.name,
+            }))
           }
         });
 
@@ -485,7 +494,7 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
         branchId: data.branchId,
         customerName: '',
         notes: '',
-        items: [{ productId: '', quantity: 1, unitPrice: 0 }],
+        items: [],
       });
 
       onSuccess?.();
@@ -547,97 +556,9 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <Label className="text-lg font-semibold">Sale Items</Label>
-          <Button 
-            type="button" 
-            onClick={() => setShowAddForm(true)} 
-            size="sm" 
-            variant="outline"
-            disabled={showAddForm}
-            className='border-green-600 text-green-600 hover:border-green-700 hover:text-green-700 hover:bg-white'
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Item
-          </Button>
         </div>
 
-        {/* Add Item Form */}
-        {showAddForm && (
-          <div className="border rounded-lg p-4 bg-muted/50">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="font-medium">Add New Item</h4>
-              <Button
-                type="button"
-                onClick={() => {
-                  setShowAddForm(false);
-                  setNewItem({ productId: '', quantity: 1, unitPrice: 0 });
-                }}
-                size="sm"
-                variant="ghost"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="space-y-2 col-span-2">
-                <Label>Product *</Label>
-                <Select
-                  value={newItem.productId}
-                  onValueChange={handleNewItemProductChange}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a product" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {product.name} - {currentOrganization?.currency || 'GH₵'} {product.price?.toFixed(2)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Quantity *</Label>
-                <Input
-                  type="number"
-                  min="1"
-                  value={newItem.quantity}
-                  onChange={(e) => setNewItem({
-                    ...newItem,
-                    quantity: parseInt(e.target.value) || 1
-                  })}
-                  className="bg-white"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Unit Price *</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={newItem.unitPrice}
-                  onChange={(e) => setNewItem({
-                    ...newItem,
-                    unitPrice: parseFloat(e.target.value) || 0
-                  })}
-                  className="bg-white"
-                />
-              </div>
-              <div className="flex items-end">
-                <Button 
-                  type="button"
-                   variant="outline" 
-                  onClick={addItem} 
-                  size="sm"
-                  disabled={!newItem.productId}
-                   className='border-green-600 text-green-600 hover:border-green-700 hover:text-green-700 hover:bg-white'
-                >
-                  Add Item
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+       
 
         {/* Items Table */}
         {fields.length > 0 ? (
@@ -784,9 +705,93 @@ export function MultipleSaleForm({ sale, onSuccess }: MultipleSaleFormProps) {
               </TableBody>
             </Table>
           </div>
-        ) : (
-          <p className="text-sm text-gray-500 border border-dashed py-6 text-center bg-gray-50/60">Add sale items</p>
+        ) : "" } 
+
+         {/* Add Item Form */}
+         {showAddForm && (
+          <div className="border rounded-lg p-4 bg-muted/50">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="space-y-2 col-span-2">
+                <Label>Product *</Label>
+                <Select
+                  value={newItem.productId}
+                  onValueChange={handleNewItemProductChange}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a product" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {products.map((product) => (
+                      <SelectItem key={product.id} value={product.id}>
+                        {product.name} - {currentOrganization?.currency || 'GH₵'} {product.price?.toFixed(2)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Quantity *</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={newItem.quantity}
+                  onChange={(e) => setNewItem({
+                    ...newItem,
+                    quantity: parseInt(e.target.value) || 1
+                  })}
+                  className="bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Unit Price *</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={newItem.unitPrice}
+                  onChange={(e) => setNewItem({
+                    ...newItem,
+                    unitPrice: parseFloat(e.target.value) || 0
+                  })}
+                  className="bg-white"
+                />
+              </div>
+              <div className="flex items-end gap-1">
+                <Button 
+                  type="button"
+                   variant="outline" 
+                  onClick={addItem} 
+                  size="sm"
+                  disabled={!newItem.productId}
+                   className='bg-green-600 text-white hover:bg-green-700 hover:text-white'
+                >
+                  Add Item
+                </Button>
+                <Button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setNewItem({ productId: '', quantity: 1, unitPrice: 0 });
+                }}
+                size="sm"
+                variant="ghost"
+                className='bg-gray-100'
+              >
+                Cancel
+              </Button>
+              </div>
+            </div>
+          </div>
         )}
+          
+          <Button
+            onClick={() => setShowAddForm(true)}
+            size="sm"
+            disabled={showAddForm}
+            className="w-full bg-white hover:bg-green-50 text-sm text-green-700 border border-dashed py-5 text-center border-green-600 hover:border-green-700 hover:text-green-700"
+          >
+            <Plus className='w-4 h-4 mr-2'/> Add item
+        </Button>
 
         {errors.items && (
           <p className="text-sm text-red-500">{errors.items.message}</p>

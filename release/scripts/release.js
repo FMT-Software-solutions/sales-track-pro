@@ -1,14 +1,24 @@
 #!/usr/bin/env node
-
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const readline = require('readline');
-const manifestUtils = require('./release-manifest');
-const publishSupabase = require('./publish-supabase');
+const glob = require('glob');
 
 // Load environment variables from .env file
-require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+// Load environment variables - prioritize .env.local for Vite development
+const envLocalPath = path.join(__dirname, '../../.env.local');
+const envPath = path.join(__dirname, '../../.env');
+
+if (fs.existsSync(envLocalPath)) {
+  require('dotenv').config({ path: envLocalPath });
+} else if (fs.existsSync(envPath)) {
+  require('dotenv').config({ path: envPath });
+} else {
+  console.warn('Warning: No .env.local or .env file found');
+}
+
+// Load release configuration
+const releaseConfig = require('../release-config');
 
 // ANSI color codes for console output
 const colors = {
@@ -31,15 +41,191 @@ const log = {
   header: (msg) => console.log(`\n${colors.bright}${colors.magenta}${msg}${colors.reset}\n`),
 };
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+// Validation functions
+function validateVersionFormat(version) {
+  const versionRegex = /^\d+\.\d+\.\d+$/;
+  return versionRegex.test(version);
+}
 
-function question(prompt) {
-  return new Promise((resolve) => {
-    rl.question(prompt, resolve);
+function validateReleaseConfig(config) {
+  const errors = [];
+
+  // Validate basic structure
+  if (!config) {
+    errors.push('Configuration is required');
+    return errors;
+  }
+
+  // Validate version
+  if (!config.version) {
+    errors.push('Version is required');
+  } else if (config.validation.validateVersionFormat && !validateVersionFormat(config.version)) {
+    errors.push(`Invalid version format: ${config.version}. Use semantic versioning (e.g., 1.2.3)`);
+  }
+
+  // Validate required fields
+  if (config.validation.requireReleaseNotes && !config.releaseNotes) {
+    errors.push('Release notes are required');
+  }
+
+  // Validate GitHub configuration
+  if (config.github.createRelease) {
+    if (!config.github.owner || !config.github.repo) {
+      errors.push('GitHub owner and repo must be specified for GitHub releases');
+    }
+    
+    if (config.github.uploadAssets && !process.env.GH_TOKEN) {
+      errors.push('GH_TOKEN environment variable is required for GitHub releases');
+    }
+  }
+
+  // Validate Supabase configuration
+  if (config.supabase && config.supabase.publish) {
+    if (!config.supabase.edgeFunction) {
+      errors.push('Supabase edge function name is required when publishing is enabled');
+    }
+    
+    if (!process.env.VITE_SUPABASE_URL) {
+      errors.push('VITE_SUPABASE_URL environment variable is required for Supabase publishing');
+    }
+    
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      errors.push('SUPABASE_SERVICE_ROLE_KEY environment variable is required for Supabase publishing');
+    }
+  }
+
+  // Validate platform configurations
+  if (config.platforms && Object.keys(config.platforms).length > 0) {
+    Object.keys(config.platforms).forEach(platform => {
+      const platformConfig = config.platforms[platform];
+      if (!platformConfig.installerPath) {
+        errors.push(`Platform ${platform} missing installer path`);
+      }
+      if (!platformConfig.installerPattern) {
+        errors.push(`Platform ${platform} missing installer pattern`);
+      }
+      if (!platformConfig.downloadUrlTemplate) {
+        errors.push(`Platform ${platform} missing download URL template`);
+      }
+    });
+  }
+
+  // Validate git configuration
+  if (config.git) {
+    if (config.git.createCommit && !config.git.commitMessage) {
+      errors.push('Git commit message is required when createCommit is enabled');
+    }
+  }
+
+  // Validate build configuration
+  if (config.build && config.build.enabled) {
+    // Check if build scripts exist in package.json
+    try {
+      const packagePath = path.join(process.cwd(), 'package.json');
+      const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+      
+      if (!packageJson.scripts || !packageJson.scripts.build) {
+        errors.push('Build script not found in package.json');
+      }
+    } catch (error) {
+      errors.push('Could not read package.json for build validation');
+    }
+  }
+
+  return errors;
+}
+
+function validateVersionIncrement(newVersion, currentVersion) {
+  if (!validateVersionFormat(newVersion) || !validateVersionFormat(currentVersion)) {
+    throw new Error('Invalid version format for comparison');
+  }
+  
+  const parseVersion = (v) => v.split('.').map(Number);
+  const [newMajor, newMinor, newPatch] = parseVersion(newVersion);
+  const [curMajor, curMinor, curPatch] = parseVersion(currentVersion);
+
+  if (newMajor > curMajor) return true;
+  if (newMajor === curMajor && newMinor > curMinor) return true;
+  if (newMajor === curMajor && newMinor === curMinor && newPatch > curPatch) return true;
+  
+  return false;
+}
+
+function validateInstallerFiles(config) {
+  const errors = [];
+  const installerFiles = findInstallerFiles(config);
+  
+  if (config.validation.requireInstallerFiles) {
+    if (Object.keys(installerFiles).length === 0) {
+      errors.push('No installer files found. Build the application first.');
+    } else {
+      // Validate each installer file exists and is readable
+      Object.entries(installerFiles).forEach(([platform, filePath]) => {
+        try {
+          const stats = fs.statSync(filePath);
+          if (!stats.isFile()) {
+            errors.push(`Installer file for ${platform} is not a valid file: ${filePath}`);
+          } else if (stats.size === 0) {
+            errors.push(`Installer file for ${platform} is empty: ${filePath}`);
+          }
+        } catch (error) {
+          errors.push(`Cannot access installer file for ${platform}: ${filePath} (${error.message})`);
+        }
+      });
+    }
+  }
+  
+  return errors;
+}
+
+function validateEnvironment() {
+  const errors = [];
+  const warnings = [];
+  
+  // Check for git repository
+  try {
+    execSync('git rev-parse --git-dir', { stdio: 'ignore' });
+  } catch (error) {
+    errors.push('Not in a git repository. Git operations will fail.');
+  }
+  
+  // Check for uncommitted changes
+  try {
+    const status = execSync('git status --porcelain', { encoding: 'utf8' });
+    if (status.trim()) {
+      warnings.push('There are uncommitted changes in the repository.');
+    }
+  } catch (error) {
+    // Git status failed, already handled above
+  }
+  
+  // Check for package.json
+  const packagePath = path.join(process.cwd(), 'package.json');
+  if (!fs.existsSync(packagePath)) {
+    errors.push('package.json not found in current directory');
+  }
+  
+  return { errors, warnings };
+}
+
+function findInstallerFiles(config) {
+  const installerFiles = {};
+  
+  Object.keys(config.platforms).forEach(platform => {
+    const platformConfig = config.platforms[platform];
+    const searchPath = path.join(process.cwd(), platformConfig.installerPath);
+    
+    if (fs.existsSync(searchPath)) {
+      const pattern = path.join(searchPath, platformConfig.installerPattern);
+      const files = glob.sync(pattern);
+      
+      if (files.length > 0) {
+        installerFiles[platform] = files[0]; // Take the first match
+      }
+    }
   });
+  
+  return installerFiles;
 }
 
 function execCommand(command, options = {}) {
@@ -55,33 +241,22 @@ function execCommand(command, options = {}) {
   }
 }
 
-function validateVersion(version) {
-  const versionRegex = /^\d+\.\d+\.\d+$/;
-  return versionRegex.test(version);
-}
 
-function isValidChangelogEntry(entry) {
-  const hasAddedSection = entry.includes('### Added');
-  const hasFixedSection = entry.includes('### Fixed');
-  const hasChangedSection = entry.includes('### Changed');
-  
-  return hasAddedSection || hasFixedSection || hasChangedSection;
-}
 
-async function getCurrentVersion() {
+function getCurrentVersion() {
   const packagePath = path.join(process.cwd(), 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
   return packageJson.version;
 }
 
-async function updatePackageVersion(newVersion) {
+function updatePackageVersion(newVersion) {
   const packagePath = path.join(process.cwd(), 'package.json');
   const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
   packageJson.version = newVersion;
   fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n');
 }
 
-async function updateChangelog(version, changelogEntry) {
+async function updateChangelog(config) {
   const changelogPath = path.join(process.cwd(), 'CHANGELOG.md');
   let changelog = '';
   
@@ -92,24 +267,50 @@ async function updateChangelog(version, changelogEntry) {
   }
 
   // Check if version already exists
-  if (changelog.includes(`## [${version}]`)) {
-    throw new Error(`Version ${version} already exists in changelog`);
+  if (changelog.includes(`## [${config.version}]`)) {
+    throw new Error(`Version ${config.version} already exists in changelog`);
   }
 
-  const date = new Date().toISOString().split('T')[0];
-  const newEntry = `## [${version}] - ${date}\n\n${changelogEntry}\n\n`;
+  const date = config.releaseDate || new Date().toISOString().split('T')[0];
+  
+  // Format release notes from structured config
+  let formattedReleaseNotes = '';
+  
+  if (typeof config.releaseNotes === 'string') {
+    formattedReleaseNotes = config.releaseNotes;
+  } else if (typeof config.releaseNotes === 'object') {
+    // Handle structured release notes
+    const sections = ['added', 'changed', 'deprecated', 'removed', 'fixed', 'security'];
+    
+    sections.forEach(section => {
+      if (config.releaseNotes[section] && config.releaseNotes[section].length > 0) {
+        const sectionTitle = section.charAt(0).toUpperCase() + section.slice(1);
+        formattedReleaseNotes += `### ${sectionTitle}\n\n`;
+        config.releaseNotes[section].forEach(item => {
+          formattedReleaseNotes += `- ${item}\n`;
+        });
+        formattedReleaseNotes += '\n';
+      }
+    });
+  }
+  
+  const newEntry = `## [${config.version}] - ${date}\n\n${formattedReleaseNotes}\n`;
   
   // Insert after the header
   const lines = changelog.split('\n');
-  const insertIndex = lines.findIndex(line => line.startsWith('## [')) || 3;
-  lines.splice(insertIndex, 0, ...newEntry.split('\n'));
+  const insertIndex = lines.findIndex(line => line.startsWith('## ['));
+  const actualInsertIndex = insertIndex !== -1 ? insertIndex : 4;
+  lines.splice(actualInsertIndex, 0, ...newEntry.split('\n'));
   
   fs.writeFileSync(changelogPath, lines.join('\n'));
 }
 
 async function buildApplication() {
   log.step('Building application...');
-  execCommand('npm run build');
+  log.info('Running electron:build (includes vite build)...');
+  execCommand('npm run electron:build');
+  log.info('Running build:electron...');
+  execCommand('npm run build:electron');
   log.success('Application built successfully');
 }
 
@@ -119,26 +320,50 @@ async function packageElectron() {
   log.success('Electron application packaged successfully');
 }
 
-async function createGitCommitAndTag(version) {
+// GitHub release functionality moved to publish-github.js
+
+async function createGitCommitAndTag(config) {
+  if (!config.git.createCommit && !config.git.createTag) {
+    log.info('Skipping git operations');
+    return;
+  }
+
   log.step('Creating git commit and tag...');
   
   // Check if tag already exists
-  try {
-    execCommand(`git rev-parse v${version}`, { silent: true });
-    throw new Error(`Git tag v${version} already exists`);
-  } catch (error) {
-    if (!error.message.includes('already exists')) {
-      // Tag doesn't exist, which is what we want
-    } else {
-      throw error;
+  if (config.git.createTag) {
+    try {
+      execCommand(`git rev-parse v${config.version}`, { silent: true });
+      throw new Error(`Git tag v${config.version} already exists`);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        // Tag doesn't exist, which is what we want
+      } else {
+        throw error;
+      }
     }
   }
 
-  execCommand('git add package.json CHANGELOG.md');
-  execCommand(`git commit -m "Release v${version}"`);
-  execCommand(`git tag v${version}`);
+  if (config.git.createCommit) {
+    execCommand('git add package.json CHANGELOG.md release/release-config.js');
+    const commitMessage = config.git.commitMessage.replace('{version}', config.version);
+    execCommand(`git commit -m "${commitMessage}"`);
+    log.success(`Git commit created: ${commitMessage}`);
+  }
   
-  log.success(`Git commit and tag v${version} created`);
+  if (config.git.createTag) {
+    execCommand(`git tag v${config.version}`);
+    log.success(`Git tag v${config.version} created`);
+  }
+  
+  if (config.git.pushChanges) {
+    log.step('Pushing changes to remote...');
+    execCommand('git push');
+    if (config.git.createTag) {
+      execCommand('git push --tags');
+    }
+    log.success('Changes pushed to remote');
+  }
 }
 
 async function publishToSupabase(version, releaseNotes) {
@@ -193,133 +418,119 @@ async function publishToSupabase(version, releaseNotes) {
 
 async function main() {
   try {
-    log.header('🚀 SalesTrack Pro Release Script');
-
-    const currentVersion = await getCurrentVersion();
+    log.header('Food Track Pro Release Script');
+    
+    // Validate environment first
+    const envValidation = validateEnvironment();
+    if (envValidation.errors.length > 0) {
+      log.error('Environment validation failed:');
+      envValidation.errors.forEach(error => log.error(`  - ${error}`));
+      throw new Error('Environment validation failed');
+    }
+    
+    if (envValidation.warnings.length > 0) {
+      log.warning('Environment warnings:');
+      envValidation.warnings.forEach(warning => log.warning(`  - ${warning}`));
+    }
+    
+    // Load and validate configuration
+    const config = releaseConfig;
+    const configValidationErrors = validateReleaseConfig(config);
+    if (configValidationErrors.length > 0) {
+      log.error('Configuration validation failed:');
+      configValidationErrors.forEach(error => log.error(`  - ${error}`));
+      throw new Error('Configuration validation failed');
+    }
+    
+    log.success('Configuration validated successfully');
+    
+    // Get current version and validate increment
+    const currentVersion = getCurrentVersion();
     log.info(`Current version: ${currentVersion}`);
-
-    // Get new version
-    const newVersion = await question(`Enter new version (current: ${currentVersion}): `);
+    log.info(`Target version: ${config.version}`);
     
-    if (!validateVersion(newVersion)) {
-      throw new Error('Invalid version format. Use semantic versioning (e.g., 1.2.3)');
+    if (!validateVersionIncrement(config.version, currentVersion)) {
+      throw new Error(`New version ${config.version} is not higher than current version ${currentVersion}`);
     }
-
-    // if (newVersion <= currentVersion) {
-    //   throw new Error('New version must be greater than current version');
-    // }
-
-    // Get changelog entry
-    log.info('\nEnter changelog entry (use ### Added, ### Fixed, ### Changed sections):');
-    log.info('Example:');
-    log.info('### Added');
-    log.info('- New feature description');
-    log.info('');
-    log.info('### Fixed');
-    log.info('- Bug fix description');
-    log.info('');
-    log.info('Type your changelog entry (press Enter twice when done):');
     
-    let changelogEntry = '';
-    let emptyLines = 0;
-    
-    while (emptyLines < 2) {
-      const line = await question('');
-      if (line === '') {
-        emptyLines++;
+    // Build application first (before modifying any files)
+    if (config.build.enabled) {
+      if (!config.build.skipBuild) {
+        await buildApplication();
       } else {
-        emptyLines = 0;
-        changelogEntry += line + '\n';
+        log.info('Skipping build (done manually)');
       }
     }
-
-    // if (!isValidChangelogEntry(changelogEntry)) {
-      // throw new Error('Changelog entry must contain at least one section (### Added, ### Fixed, or ### Changed)');
-    // }
-
-    // Confirm release
-    log.info(`\nRelease Summary:`);
-    log.info(`Version: ${newVersion}`);
-    log.info(`Changelog:\n${changelogEntry}`);
     
-    const confirm = await question('Proceed with release? (y/N): ');
-    if (confirm.toLowerCase() !== 'y') {
-      log.info('Release cancelled');
-      process.exit(0);
-    }
-
-    // Backup current state for rollback
-    const backupData = {
-      version: currentVersion,
-      packageJson: fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'),
-      changelog: fs.existsSync(path.join(process.cwd(), 'CHANGELOG.md')) 
-        ? fs.readFileSync(path.join(process.cwd(), 'CHANGELOG.md'), 'utf8') 
-        : null,
-    };
-
-    try {
-      // Update version and changelog
-      await updatePackageVersion(newVersion);
-      await updateChangelog(newVersion, changelogEntry.trim());
-      
-      // Build and package
-      await buildApplication();
+    // Update package.json (after successful build)
+    updatePackageVersion(config.version);
+    log.success('Updated package.json');
+    
+    // Update changelog
+    await updateChangelog(config);
+    log.success('Updated CHANGELOG.md');
+    
+    // Package application with updated version
+    if (config.build.enabled && !config.build.skipPackage) {
       await packageElectron();
-      
-      // Git operations
-      await createGitCommitAndTag(newVersion);
-      
-      // Publish to Supabase
-      await publishToSupabase(newVersion, changelogEntry.trim());
-      
-      log.header('🎉 Release completed successfully!');
-      log.success(`Version ${newVersion} has been released`);
-      log.info('Next steps:');
-      log.info('1. Push to git: git push && git push --tags');
-      log.info('2. Upload release files manually to your hosting');
-      log.info('3. Update the download URLs in your release manifest');
-      log.info('4. Publish the release from your admin dashboard');
-
-    } catch (error) {
-      log.error(`Release failed: ${error.message}`);
-      
-      const rollback = await question('Would you like to rollback changes? (Y/n): ');
-      if (rollback.toLowerCase() !== 'n') {
-        log.step('Rolling back changes...');
-        
-        // Restore package.json
-        fs.writeFileSync(path.join(process.cwd(), 'package.json'), backupData.packageJson);
-        
-        // Restore changelog
-        if (backupData.changelog) {
-          fs.writeFileSync(path.join(process.cwd(), 'CHANGELOG.md'), backupData.changelog);
-        }
-        
-        // Remove git tag if it was created
-        try {
-          execCommand(`git tag -d v${newVersion}`, { silent: true });
-        } catch (e) {
-          // Tag might not exist
-        }
-        
-        // Reset git commit if it was created
-        try {
-          execCommand('git reset HEAD~1', { silent: true });
-        } catch (e) {
-          // Commit might not exist
-        }
-        
-        log.success('Changes rolled back successfully');
-      }
-      
-      process.exit(1);
+    } else if (config.build.enabled) {
+      log.info('Skipping packaging');
     }
-
+    
+    // Validate installer files after building
+    const installerValidationErrors = validateInstallerFiles(config);
+    if (installerValidationErrors.length > 0) {
+      log.error('Installer file validation failed:');
+      installerValidationErrors.forEach(error => log.error(`  - ${error}`));
+      throw new Error('Installer file validation failed');
+    }
+    
+    // Find installer files
+    const installerFiles = findInstallerFiles(config);
+    if (Object.keys(installerFiles).length > 0) {
+      log.info('Found installer files:');
+      Object.entries(installerFiles).forEach(([platform, path]) => {
+        log.info(`  ${platform}: ${path}`);
+      });
+    }
+    
+    // Create git commit and tag
+    await createGitCommitAndTag(config);
+    
+    // Publish to GitHub automatically
+    if (config.github.enabled && config.github.createRelease) {
+      try {
+        const { createGitHubRelease } = require('./publish-github');
+        const githubRelease = await createGitHubRelease(config, installerFiles);
+        if (githubRelease) {
+          log.success(`GitHub release created: ${githubRelease.html_url}`);
+        }
+      } catch (error) {
+        log.error(`GitHub publishing failed: ${error.message}`);
+        log.info('You can retry with: npm run publish:github');
+      }
+    }
+    
+    // Publish to Supabase automatically
+    if (config.supabase && config.supabase.enabled) {
+      try {
+        await publishToSupabase(config.version, config.releaseNotes);
+        log.success('Published to Supabase successfully');
+      } catch (error) {
+        log.error(`Supabase publishing failed: ${error.message}`);
+        log.info('You can retry with: npm run publish:supabase');
+      }
+    }
+    
+    log.success('Release completed successfully!');
+    
+    log.info('Backup commands available:');
+    log.info('- npm run publish:github (if GitHub publishing failed)');
+    log.info('- npm run publish:supabase (if Supabase publishing failed)');
+    
   } catch (error) {
-    log.error(error.message);
+    log.error('Release failed:', error.message);
     process.exit(1);
-  } finally {
-    rl.close();
   }
 }
 

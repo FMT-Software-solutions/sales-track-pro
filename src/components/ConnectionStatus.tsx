@@ -16,7 +16,7 @@ interface ConnectionStatusProps {
 
 export function ConnectionStatus({
   className = '',
-  message = 'Connection lost. Attempting to reconnect...',
+  message = 'Internet Connection lost. Attempting to reconnect...',
   connectedMessage = 'Connection restored',
   hideDelay = 3000, // 3 seconds
 }: ConnectionStatusProps) {
@@ -69,7 +69,7 @@ export function ConnectionStatus({
           className
         )}
       >
-        <AlertDescription className="flex items-center">
+        <AlertDescription className="flex items-center text-xs">
           {isConnected ? (
             <Wifi className="h-4 w-4 mr-2" />
           ) : (
