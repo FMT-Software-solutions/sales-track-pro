@@ -30,7 +30,15 @@ let electronAPI: any = {
   downloadUpdateToTemp: (downloadUrl: string, fileName: string) => ipcRenderer.invoke('download-update-to-temp', downloadUrl, fileName),
   getDownloadProgress: () => ipcRenderer.invoke('get-download-progress'),
   installAndRestart: (downloadPath: string) => ipcRenderer.invoke('install-and-restart', downloadPath),
-  cancelDownload: () => ipcRenderer.invoke('cancel-download')
+  cancelDownload: () => ipcRenderer.invoke('cancel-download'),
+  // Install preferences API
+  setInstallOnClose: (enabled: boolean, filePath?: string) => ipcRenderer.invoke('set-install-on-close', enabled, filePath),
+  setInstallOnNextLaunch: (enabled: boolean, filePath?: string) => ipcRenderer.invoke('set-install-on-next-launch', enabled, filePath),
+  getInstallPreferences: () => ipcRenderer.invoke('get-install-preferences'),
+  // Update config API
+  getUpdateConfig: () => ipcRenderer.invoke('get-update-config'),
+  // Platform info API
+  getPlatformInfo: () => ipcRenderer.invoke('get-platform-info')
 }
 
 if (isDev) {

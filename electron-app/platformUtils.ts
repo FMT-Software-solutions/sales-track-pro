@@ -1,0 +1,69 @@
+import os from 'os';
+
+export interface PlatformInfo {
+  platform: string;
+  architecture: string;
+  fileExtension: string;
+  installerArgs: string[];
+}
+
+/**
+ * Get platform-specific file extension for installers
+ */
+export function getFileExtension(platform: string): string {
+  switch (platform) {
+    case 'win32':
+      return '.exe';
+    case 'darwin':
+      return '.dmg';
+    case 'linux':
+      return '.AppImage';
+    default:
+      return '';
+  }
+}
+
+/**
+ * Get platform-specific installer arguments for silent installation
+ */
+export function getInstallerArgs(platform: string): string[] {
+  switch (platform) {
+    case 'win32':
+      return ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'];
+    case 'darwin':
+    case 'linux':
+    default:
+      return [];
+  }
+}
+
+/**
+ * Get current platform information
+ */
+export function getPlatformInfo(): PlatformInfo {
+  const platform = process.platform;
+  const architecture = os.arch();
+  
+  return {
+    platform,
+    architecture,
+    fileExtension: getFileExtension(platform),
+    installerArgs: getInstallerArgs(platform)
+  };
+}
+
+/**
+ * Generate platform-specific filename for updates
+ */
+export function generateUpdateFileName(version: string, platform?: string): string {
+  const targetPlatform = platform || process.platform;
+  const extension = getFileExtension(targetPlatform);
+  return `update-${version}${extension}`;
+}
+
+/**
+ * Check if platform supports silent installation
+ */
+export function supportsSilentInstall(platform: string): boolean {
+  return platform === 'win32';
+}

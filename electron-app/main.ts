@@ -4,6 +4,8 @@ import fs from 'fs';
 import https from 'https';
 import os from 'os';
 import { config } from 'dotenv';
+import updateConfigManager from './updateConfigManager';
+import { getPlatformInfo, generateUpdateFileName, getInstallerArgs, supportsSilentInstall } from './platformUtils';
 
 // Check if running in development
 const isDev = !app.isPackaged;
@@ -54,7 +56,38 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 // Auto-update state
 let currentDownload: any = null
 let downloadProgress: any = null
-let downloadedFilePath: string | null = null
+
+// Helper function to get cleanup state file path
+function getCleanupStatePath(): string {
+  return path.join(os.tmpdir(), 'salestrack-cleanup-state.json');
+}
+
+// Helper function to read cleanup state
+function getCleanupState(): { needsCleanup: boolean; lastCleanup: number } {
+  try {
+    const statePath = getCleanupStatePath();
+    if (fs.existsSync(statePath)) {
+      return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    }
+  } catch (error) {
+    console.log('Could not read cleanup state:', error);
+  }
+  return { needsCleanup: false, lastCleanup: 0 };
+}
+
+// Helper function to set cleanup state
+function setCleanupState(needsCleanup: boolean): void {
+  try {
+    const statePath = getCleanupStatePath();
+    const state = {
+      needsCleanup,
+      lastCleanup: needsCleanup ? 0 : Date.now()
+    };
+    fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } catch (error) {
+    console.log('Could not write cleanup state:', error);
+  }
+}
 
 // Helper function to get temporary download directory
 function getTempDownloadPath(): string {
@@ -71,16 +104,33 @@ function getTempDownloadPath(): string {
 }
 
 // Helper function to clean up temporary files
-function cleanupTempFiles(): void {
+function cleanupTempFiles(force: boolean = false): void {
   try {
+    const cleanupState = getCleanupState();
+    
+    // Only cleanup if forced or if cleanup is needed
+    if (!force && !cleanupState.needsCleanup) {
+      console.log('Cleanup not needed, skipping...');
+      return;
+    }
+    
+    console.log('Performing cleanup...');
     const tempDir = getTempDownloadPath();
     if (fs.existsSync(tempDir)) {
       const files = fs.readdirSync(tempDir);
       files.forEach(file => {
         try {
           const filePath = path.join(tempDir, file);
-          fs.unlinkSync(filePath);
-          console.log('Cleaned up temp file:', filePath);
+          const stats = fs.statSync(filePath);
+          
+          // Remove files older than 24 hours or partial downloads
+          const isOld = Date.now() - stats.mtime.getTime() > 24 * 60 * 60 * 1000;
+          const isPartial = file.endsWith('.partial') || file.endsWith('.tmp');
+          
+          if (isOld || isPartial) {
+            fs.unlinkSync(filePath);
+            console.log('Cleaned up temp file:', filePath);
+          }
         } catch (fileError) {
           console.log('Could not clean up temp file:', file, fileError);
         }
@@ -88,14 +138,65 @@ function cleanupTempFiles(): void {
       
       // Try to remove the directory if it's empty
       try {
-        fs.rmdirSync(tempDir);
-        console.log('Cleaned up temp directory:', tempDir);
+        const remainingFiles = fs.readdirSync(tempDir);
+        if (remainingFiles.length === 0) {
+          fs.rmdirSync(tempDir);
+          console.log('Cleaned up temp directory:', tempDir);
+        }
       } catch (dirError) {
         console.log('Could not remove temp directory:', dirError);
       }
     }
+    
+    // Clean up pending install config files
+    cleanupPendingInstallConfigs();
+    
+    // Mark cleanup as completed
+    setCleanupState(false);
   } catch (error) {
     console.log('Error during temp file cleanup:', error);
+  }
+}
+
+// Helper function to clean up pending install configuration files
+function cleanupPendingInstallConfigs(): void {
+  try {
+    const configPath = path.join(os.tmpdir(), 'salestrack-pending-install.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      
+      // Check if the install file still exists
+      if (!config.installPath || !fs.existsSync(config.installPath)) {
+        fs.unlinkSync(configPath);
+        console.log('Cleaned up orphaned pending install config');
+      }
+    }
+  } catch (error) {
+    console.log('Error cleaning up pending install configs:', error);
+  }
+}
+
+// Helper function to clean up specific file and its directory if empty
+function cleanupFileAndDirectory(filePath: string): void {
+  try {
+    if (fs.existsSync(filePath)) {
+      const directory = path.dirname(filePath);
+      fs.unlinkSync(filePath);
+      console.log('Cleaned up file:', filePath);
+      
+      // Try to remove directory if it's empty
+      try {
+        const files = fs.readdirSync(directory);
+        if (files.length === 0) {
+          fs.rmdirSync(directory);
+          console.log('Cleaned up empty directory:', directory);
+        }
+      } catch (dirError) {
+        // Directory not empty or other error, ignore
+      }
+    }
+  } catch (error) {
+    console.log('Error cleaning up file and directory:', error);
   }
 }
 
@@ -189,6 +290,10 @@ function registerIPCHandlers() {
       
       console.log('Checking for updates with version:', currentVersion);
       
+      // Update current version in config
+      updateConfigManager.setCurrentVersion(currentVersion);
+      updateConfigManager.setLastChecked();
+      
       const response = await fetch(`${(supabaseConfig as any).SUPABASE_URL}/functions/v1/check-updates`, {
         method: 'POST',
         headers: {
@@ -208,6 +313,31 @@ function registerIPCHandlers() {
 
       const result = await response.json();
       console.log('Update check result:', result);
+      
+      // If update is available, store it in config
+      if (result.success && result.updateAvailable && result.downloadUrl) {
+        updateConfigManager.setAvailableUpdate({
+          version: result.version,
+          downloadUrl: result.downloadUrl,
+          fileName: result.fileName || generateUpdateFileName(result.version),
+          fileSize: result.fileSize || 0,
+          checksum: result.checksum,
+          releaseNotes: result.releaseNotes
+        });
+        
+        // Check if we already have this version downloaded
+        const isAlreadyDownloaded = await updateConfigManager.validateDownloadedFile();
+        
+        return {
+          ...result,
+          alreadyDownloaded: isAlreadyDownloaded,
+          needsUserDecision: updateConfigManager.needsUserDecision()
+        };
+      } else if (result.success && !result.updateAvailable) {
+        // Clear any existing update info if no update is available
+        updateConfigManager.clearAvailableUpdate();
+      }
+      
       return result;
     } catch (error) {
       console.error('Update check failed:', error);
@@ -232,29 +362,81 @@ function registerIPCHandlers() {
   });
 
   // Auto-update IPC handlers
-  ipcMain.handle('download-update-to-temp', async (_: any, downloadUrl: string, fileName: string) => {
+  ipcMain.handle('download-update-to-temp', async (_: any, downloadUrl?: string, fileName?: string) => {
     try {
       if (currentDownload) {
         return { success: false, error: 'Download already in progress' };
       }
       
-      const tempDir = getTempDownloadPath();
-      const filePath = path.join(tempDir, fileName);
+      const config = updateConfigManager.getConfig();
       
-      console.log('Starting download to:', filePath);
-      const result = await downloadFileWithProgress(downloadUrl, filePath);
+      // Use config values if not provided
+      const actualDownloadUrl = downloadUrl || config.availableUpdate.downloadUrl;
+      const actualFileName = fileName || config.availableUpdate.fileName;
       
-      if (result.success) {
-        downloadedFilePath = filePath;
-        console.log('Download completed:', filePath);
+      if (!actualDownloadUrl || !actualFileName) {
+        return { success: false, error: 'No download information available' };
       }
       
-      currentDownload = null;
-      return result;
+      // Check if we already have this version downloaded and validated
+      const isAlreadyDownloaded = await updateConfigManager.validateDownloadedFile();
+      if (isAlreadyDownloaded && config.downloadState.downloadPath) {
+        console.log('Update already downloaded and validated:', config.downloadState.downloadPath);
+        if (win && !win.isDestroyed()) {
+          win.webContents.send('download-complete', { 
+            success: true, 
+            downloadPath: config.downloadState.downloadPath,
+            alreadyDownloaded: true 
+          });
+        }
+        return { success: true, message: 'Update already downloaded', alreadyDownloaded: true };
+      }
+      
+      const tempDir = getTempDownloadPath();
+      const filePath = path.join(tempDir, actualFileName);
+      
+      console.log('Starting download to:', filePath);
+      
+      // Start download asynchronously without blocking
+      downloadFileWithProgress(actualDownloadUrl, filePath)
+        .then((result) => {
+          if (result.success) {
+            // Update config with download completion
+            updateConfigManager.setDownloadCompleted(filePath);
+            console.log('Download completed:', filePath);
+            
+            // Validate the downloaded file
+            updateConfigManager.validateDownloadedFile().then((isValid) => {
+              if (win && !win.isDestroyed()) {
+                win.webContents.send('download-complete', { 
+                  success: true, 
+                  downloadPath: filePath,
+                  verified: isValid
+                });
+              }
+            });
+          } else {
+            console.error('Download failed:', result.error);
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('download-complete', { success: false, error: result.error });
+            }
+          }
+          currentDownload = null;
+        })
+        .catch((error) => {
+          console.error('Auto-update download failed:', error);
+          currentDownload = null;
+          downloadProgress = null;
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('download-complete', { success: false, error: errorMessage });
+          }
+        });
+      
+      // Return immediately to indicate download started
+      return { success: true, message: 'Download started in background' };
     } catch (error) {
-      console.error('Auto-update download failed:', error);
-      currentDownload = null;
-      downloadProgress = null;
+      console.error('Failed to start download:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return { success: false, error: errorMessage };
     }
@@ -271,25 +453,8 @@ function registerIPCHandlers() {
         currentDownload = null;
         downloadProgress = null;
         
-        // Clean up partial file if it exists
-        if (downloadedFilePath && fs.existsSync(downloadedFilePath)) {
-          const tempDir = path.dirname(downloadedFilePath);
-          fs.unlinkSync(downloadedFilePath);
-          console.log('Cleaned up cancelled download file:', downloadedFilePath);
-          downloadedFilePath = null;
-          
-          // Try to clean up the temp directory if it's empty
-          try {
-            const files = fs.readdirSync(tempDir);
-            if (files.length === 0) {
-              fs.rmdirSync(tempDir);
-              console.log('Cleaned up empty temp directory:', tempDir);
-            }
-          } catch (dirError) {
-            // Directory might not be empty or might not exist, ignore
-            console.log('Could not clean up temp directory:', dirError);
-          }
-        }
+        // Clear download state in config
+        updateConfigManager.clearDownloadState();
       }
       return { success: true };
     } catch (error) {
@@ -298,52 +463,39 @@ function registerIPCHandlers() {
     }
   });
 
-  ipcMain.handle('install-and-restart', async (_: any, downloadPath: string) => {
+  ipcMain.handle('install-and-restart', async (_: any, downloadPath?: string) => {
     try {
-      if (!fs.existsSync(downloadPath)) {
+      const config = updateConfigManager.getConfig();
+      const actualDownloadPath = downloadPath || config.downloadState.downloadPath;
+      
+      if (!actualDownloadPath || !fs.existsSync(actualDownloadPath)) {
         return { success: false, error: 'Downloaded file not found' };
       }
       
-      console.log('Installing update from:', downloadPath);
+      console.log('Installing update from:', actualDownloadPath);
       
-      // On Windows, run the installer silently
-      if (process.platform === 'win32') {
+      // Mark for cleanup after installation
+      updateConfigManager.addToCleanupList(actualDownloadPath);
+      
+      // Check if platform supports silent installation
+      if (supportsSilentInstall(process.platform)) {
         const { spawn } = require('child_process');
+        const installerArgs = getInstallerArgs(process.platform);
         
-        // Run the installer with silent parameters
-        // /S = Silent install, /CLOSEAPPLICATIONS = Close running applications, /RESTARTAPPLICATIONS = Restart applications after install
-        const installer = spawn(downloadPath, ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'], {
+        // Run the installer with platform-specific parameters
+        const installer = spawn(actualDownloadPath, installerArgs, {
           detached: true,
           stdio: 'ignore'
         });
         
         installer.unref();
         
-        // Schedule cleanup of the downloaded file after installer starts
-        // We delay this to ensure the installer has time to read the file
+        // Clear update state and preferences after starting installation
         setTimeout(() => {
-          try {
-            if (fs.existsSync(downloadPath)) {
-              fs.unlinkSync(downloadPath);
-              console.log('Cleaned up downloaded installer file:', downloadPath);
-            }
-            
-            // Also try to clean up the entire temp directory if it's empty
-            const tempDir = path.dirname(downloadPath);
-            try {
-              const files = fs.readdirSync(tempDir);
-              if (files.length === 0) {
-                fs.rmdirSync(tempDir);
-                console.log('Cleaned up empty temp directory:', tempDir);
-              }
-            } catch (dirError) {
-              // Directory might not be empty or might not exist, ignore
-              console.log('Could not clean up temp directory:', dirError);
-            }
-          } catch (cleanupError) {
-            console.log('Could not clean up downloaded file:', cleanupError);
-          }
-        }, 2000); // Wait 2 seconds to ensure installer has started
+          updateConfigManager.clearAvailableUpdate();
+          updateConfigManager.clearDownloadState();
+          updateConfigManager.clearInstallPreferences();
+        }, 1000);
         
         // Give the installer a moment to start, then quit the app
         setTimeout(() => {
@@ -352,21 +504,13 @@ function registerIPCHandlers() {
         
         return { success: true };
       } else {
-        // For other platforms, you might need different logic
-        // For now, just open the file
-        await shell.openPath(downloadPath);
+        // For platforms that don't support silent installation, open the installer
+        await shell.openPath(actualDownloadPath);
         
-        // Schedule cleanup for non-Windows platforms too
-        setTimeout(() => {
-          try {
-            if (fs.existsSync(downloadPath)) {
-              fs.unlinkSync(downloadPath);
-              console.log('Cleaned up downloaded installer file:', downloadPath);
-            }
-          } catch (cleanupError) {
-            console.log('Could not clean up downloaded file:', cleanupError);
-          }
-        }, 2000);
+        // Clear update state and preferences
+        updateConfigManager.clearAvailableUpdate();
+        updateConfigManager.clearDownloadState();
+        updateConfigManager.clearInstallPreferences();
         
         app.quit();
         return { success: true };
@@ -376,6 +520,56 @@ function registerIPCHandlers() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       return { success: false, error: errorMessage };
     }
+  });
+
+  // Set install preferences
+  ipcMain.handle('set-install-on-close', async (_: any, enabled: boolean) => {
+    if (enabled) {
+      updateConfigManager.setInstallPreference('onClose');
+    } else {
+      updateConfigManager.clearInstallPreferences();
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('set-install-on-next-launch', async (_: any, enabled: boolean) => {
+    if (enabled) {
+      updateConfigManager.setInstallPreference('onNextLaunch');
+    } else {
+      updateConfigManager.clearInstallPreferences();
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('set-install-now', async () => {
+    updateConfigManager.setInstallPreference('now');
+    return { success: true };
+  });
+
+  // Get install preferences and update state
+  ipcMain.handle('get-install-preferences', async () => {
+    const config = updateConfigManager.getConfig();
+    return {
+      installOnClose: config.installPreferences.installOnClose,
+      installOnNextLaunch: config.installPreferences.installOnNextLaunch,
+      installNow: config.installPreferences.installNow,
+      userDecisionPending: config.installPreferences.userDecisionPending,
+      pendingInstallPath: config.downloadState.downloadPath,
+      hasAvailableUpdate: updateConfigManager.hasAvailableUpdate(),
+      isUpdateDownloaded: updateConfigManager.isUpdateDownloaded(),
+      updateVersion: config.availableUpdate.version,
+      releaseNotes: config.availableUpdate.releaseNotes
+    };
+  });
+
+  // Get update configuration
+  ipcMain.handle('get-update-config', async () => {
+    return updateConfigManager.getConfig();
+  });
+
+  // Get platform information
+  ipcMain.handle('get-platform-info', async () => {
+    return getPlatformInfo();
   });
 }
 
@@ -477,12 +671,142 @@ app.on('window-all-closed', () => {
 })
 
 // Clean up temporary files when app is quitting
-app.on('before-quit', () => {
-  console.log('App is quitting, cleaning up temporary files...');
-  cleanupTempFiles();
+app.on('before-quit', async () => {
+  console.log('App is quitting, checking for pending installations...');
+  
+  // Check if we should install on close
+  if (updateConfigManager.shouldInstallOnClose()) {
+    const config = updateConfigManager.getConfig();
+    const installPath = config.downloadState.downloadPath;
+    
+    if (installPath && fs.existsSync(installPath)) {
+      try {
+        console.log('Installing update on app close:', installPath);
+        
+        // Mark for cleanup after installation
+        updateConfigManager.addToCleanupList(installPath);
+        
+        if (process.platform === 'win32') {
+          const { spawn } = require('child_process');
+          const installer = spawn(installPath, ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'], {
+            detached: true,
+            stdio: 'ignore'
+          });
+          installer.unref();
+          
+          // Clear update state after starting installation
+          setTimeout(() => {
+            updateConfigManager.clearAvailableUpdate();
+            updateConfigManager.clearDownloadState();
+            updateConfigManager.clearInstallPreferences();
+          }, 1000);
+        } else {
+          await shell.openPath(installPath);
+          updateConfigManager.clearAvailableUpdate();
+          updateConfigManager.clearDownloadState();
+          updateConfigManager.clearInstallPreferences();
+        }
+      } catch (error) {
+        console.error('Failed to install on close:', error);
+      }
+    }
+  } else {
+    // Perform cleanup if needed
+    if (updateConfigManager.needsCleanup()) {
+      const filesToCleanup = updateConfigManager.getFilesToCleanup();
+      for (const filePath of filesToCleanup) {
+        try {
+          if (fs.existsSync(filePath)) {
+            cleanupFileAndDirectory(filePath);
+          }
+        } catch (error) {
+          console.error('Failed to cleanup file:', filePath, error);
+        }
+      }
+      updateConfigManager.markCleanupCompleted();
+    }
+  }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Check for pending install on launch first
+  if (updateConfigManager.shouldInstallOnNextLaunch()) {
+    const config = updateConfigManager.getConfig();
+    const installPath = config.downloadState.downloadPath;
+    
+    if (installPath && fs.existsSync(installPath)) {
+      try {
+        console.log('Found pending install on launch:', installPath);
+        
+        // Mark for cleanup after installation
+        updateConfigManager.addToCleanupList(installPath);
+        
+        if (process.platform === 'win32') {
+          const { spawn } = require('child_process');
+          const installer = spawn(installPath, ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'], {
+            detached: true,
+            stdio: 'ignore'
+          });
+          installer.unref();
+          
+          // Clear update state after starting installation
+          setTimeout(() => {
+            updateConfigManager.clearAvailableUpdate();
+            updateConfigManager.clearDownloadState();
+            updateConfigManager.clearInstallPreferences();
+          }, 1000);
+          
+          // Quit after starting installer
+          setTimeout(() => {
+            app.quit();
+          }, 1000);
+          
+          return; // Don't continue with normal startup
+        } else {
+          await shell.openPath(installPath);
+          updateConfigManager.clearAvailableUpdate();
+          updateConfigManager.clearDownloadState();
+          updateConfigManager.clearInstallPreferences();
+          app.quit();
+          return;
+        }
+      } catch (error) {
+        console.error('Error processing pending install:', error);
+        // Clear the install preference if there's an error
+        updateConfigManager.clearInstallPreferences();
+      }
+    } else {
+      // Clear install preference if file doesn't exist
+      console.log('Pending install file not found, clearing preferences');
+      updateConfigManager.clearInstallPreferences();
+    }
+  }
+  
+  // Validate any existing downloads on startup
+  if (updateConfigManager.hasAvailableUpdate() && updateConfigManager.isUpdateDownloaded()) {
+    console.log('Validating existing download on startup...');
+    const isValid = await updateConfigManager.validateDownloadedFile();
+    if (!isValid) {
+      console.log('Existing download is invalid, will need to redownload');
+    }
+  }
+  
+  // Perform cleanup if needed
+  if (updateConfigManager.needsCleanup()) {
+    console.log('Performing startup cleanup...');
+    const filesToCleanup = updateConfigManager.getFilesToCleanup();
+    for (const filePath of filesToCleanup) {
+      try {
+        if (fs.existsSync(filePath)) {
+          cleanupFileAndDirectory(filePath);
+        }
+      } catch (error) {
+        console.error('Failed to cleanup file:', filePath, error);
+      }
+    }
+    updateConfigManager.markCleanupCompleted();
+  }
+  
   // Register IPC handlers
   registerIPCHandlers()
   createWindow()

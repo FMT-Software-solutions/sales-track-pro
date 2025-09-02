@@ -44,6 +44,43 @@ export interface InstallResult {
   error?: string;
 }
 
+export interface PlatformInfo {
+  platform: string;
+  architecture: string;
+  fileExtension: string;
+  installerArgs: string[];
+}
+
+export interface UpdateConfig {
+  lastChecked: string | null;
+  currentVersion: string | null;
+  availableUpdate: {
+    version: string | null;
+    downloadUrl: string | null;
+    fileName: string | null;
+    fileSize: number | null;
+    checksum: string | null;
+    releaseNotes: string | null;
+  };
+  downloadState: {
+    isDownloaded: boolean;
+    downloadPath: string | null;
+    downloadedAt: string | null;
+    verified: boolean;
+  };
+  installPreferences: {
+    installOnClose: boolean;
+    installOnNextLaunch: boolean;
+    installNow: boolean;
+    userDecisionPending: boolean;
+  };
+  cleanup: {
+    needsCleanup: boolean;
+    lastCleanup: string | null;
+    filesToCleanup: string[];
+  };
+}
+
 declare global {
   interface Window {
     electron?: {
@@ -55,6 +92,15 @@ declare global {
       getDownloadProgress: () => Promise<DownloadProgress | null>;
       installAndRestart: (downloadPath: string) => Promise<InstallResult>;
       cancelDownload: () => Promise<{ success: boolean }>;
+      // Install preference methods
+      setInstallOnClose: (enable: boolean, installPath?: string) => Promise<{ success: boolean }>;
+      setInstallOnNextLaunch: (enable: boolean, installPath?: string) => Promise<{ success: boolean }>;
+      setInstallNow: (enable: boolean) => Promise<{ success: boolean }>;
+      getInstallPreferences: () => Promise<{ installOnClose: boolean; installOnNextLaunch: boolean; pendingInstallPath: string | null }>;
+      // Update config methods
+      getUpdateConfig: () => Promise<UpdateConfig>;
+      // Platform info method
+      getPlatformInfo: () => Promise<PlatformInfo>;
       ipcRenderer: {
         on: (channel: string, listener: (...args: any[]) => void) => void;
         off: (channel: string, listener: (...args: any[]) => void) => void;

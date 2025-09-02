@@ -8,32 +8,15 @@
 
 module.exports = {
   // Version information
-  version: "1.1.0",
+  version: "1.1.1",
   
   // Release notes in markdown format
   releaseNotes: `### Added
-
-- Sales period closing
-- Activities log and audit trails
-- Ability to void/remove sales
-- More user roles and permissions
-- Ability Deactivate users
-- Help window
+- Background update downloads
 
 ### Improved / Changed
 
-- Sales Recording UI
-- Permissions
-- Added pagination to user management screen
-
 ### Bug Fixes
-
-- Fixed Dashboard: Refresh/loading issue
-- Resolved Sales and Expenses Entries pagination not resetting
-- Fixed Negative profit is showing green for dashboard chart
-- Fixed Organization details disappearing
-- Fixed Profile name not reflecting automatically after profile update
-- Fixed branch assignment issue for admin users
 `,
 
 
@@ -83,8 +66,8 @@ module.exports = {
 
   // Supabase publishing configuration
   supabase: {
-    enabled: true,
-    publish: true,
+    enabled: false,
+    publish: false,
     edgeFunction: 'publish-release',
     url: process.env.VITE_SUPABASE_URL,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -104,7 +87,7 @@ module.exports = {
     createCommit: true,
     createTag: true,
     pushChanges: true, // Set to true to automatically push
-    commitMessage: "Release v1.1.0"
+    commitMessage: "Release v1.1.1"
   },
 
   // Validation rules

@@ -1,0 +1,29 @@
+{
+  "lastChecked": null,
+  "currentVersion": null,
+  "availableUpdate": {
+    "version": null,
+    "downloadUrl": null,
+    "fileName": null,
+    "fileSize": null,
+    "checksum": null,
+    "releaseNotes": null
+  },
+  "downloadState": {
+    "isDownloaded": false,
+    "downloadPath": null,
+    "downloadedAt": null,
+    "verified": false
+  },
+  "installPreferences": {
+    "installOnClose": false,
+    "installOnNextLaunch": false,
+    "installNow": false,
+    "userDecisionPending": false
+  },
+  "cleanup": {
+    "needsCleanup": false,
+    "lastCleanup": null,
+    "filesToCleanup": []
+  }
+}

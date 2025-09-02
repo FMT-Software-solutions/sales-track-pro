@@ -9,6 +9,7 @@ import { OrganizationSelector } from '@/components/OrganizationSelector';
 import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { HelpDrawer } from '@/components/layout/HelpDrawer';
 import { UpdateDrawer } from '@/components/layout/UpdateDrawer';
+import { RestartToUpdateButton } from '@/components/ui/RestartToUpdateButton';
 import { useUpdateStore } from '@/stores/updateStore';
 import {
   DropdownMenu,
@@ -200,6 +201,10 @@ export function AppLayout({ children }: AppLayoutProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            
+            {/* Restart to Update Button */}
+            <RestartToUpdateButton className="mx-2" />
+            
             <div className="flex items-center space-x-3">
               <Button
                 variant="ghost"
