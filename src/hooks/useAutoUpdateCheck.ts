@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { UpdateCheckResult } from '@/types/electron.d';
+import { UpdateCheckResult, AutoUpdateResult, DownloadProgress } from '@/types/electron.d';
 import { useUpdateStore } from '@/stores/updateStore';
 
 export function useAutoUpdateCheck() {
@@ -10,7 +10,10 @@ export function useAutoUpdateCheck() {
     setHasUpdate, 
     setUpdateInfo, 
     setIsCheckingForUpdates, 
-    setLastChecked
+    setLastChecked,
+    setIsDownloading,
+    setDownloadProgress,
+    setIsDownloadComplete
   } = useUpdateStore();
 
 
@@ -32,19 +35,33 @@ export function useAutoUpdateCheck() {
         setHasUpdate(true);
         setUpdateInfo(result.latestVersion);
         
-        // Automatically start download when update is detected
-        if (window.electron?.downloadUpdateToTemp) {
-          try {
-            // Extract filename from URL or use version info
-            const url = new URL(result.latestVersion.download_url);
-            const fileName = url.pathname.split('/').pop() || `SalesTrack-${result.latestVersion.version}-Setup.exe`;
-            
-            await window.electron.downloadUpdateToTemp(
-              result.latestVersion.download_url,
-              fileName
-            );
-          } catch (error) {
-            console.error('Failed to start automatic download:', error);
+        // Check if update is already downloaded
+        if (result.latestVersion.alreadyDownloaded) {
+          setIsDownloadComplete(true);
+          if (!silent) {
+            toast.success('Update ready to install!', {
+              description: `Version ${result.latestVersion.version} is ready to install.`,
+            });
+          }
+        } else {
+          // Automatically start download when update is detected
+          if (window.electron?.downloadUpdateToTemp) {
+            try {
+              setIsDownloading(true);
+              setDownloadProgress(null);
+              
+              // Extract filename from URL or use version info
+              const url = new URL(result.latestVersion.download_url);
+              const fileName = url.pathname.split('/').pop() || `SalesTrack-${result.latestVersion.version}-Setup.exe`;
+              
+              await window.electron.downloadUpdateToTemp(
+                result.latestVersion.download_url,
+                fileName
+              );
+            } catch (error) {
+              console.error('Failed to start automatic download:', error);
+              setIsDownloading(false);
+            }
           }
         }
         
@@ -94,10 +111,40 @@ export function useAutoUpdateCheck() {
       checkForUpdates(true); // Silent periodic checks
     }, 4 * 60 * 60 * 1000); // 4 hours
 
-    // Cleanup interval on unmount
+    // Set up download event listeners
+    const handleDownloadProgress = (progress: DownloadProgress) => {
+      setIsDownloading(true);
+      setDownloadProgress(progress);
+    };
+
+    const handleDownloadComplete = (result: AutoUpdateResult) => {
+      setIsDownloading(false);
+      setDownloadProgress(null);
+      if (result.success) {
+        setIsDownloadComplete(true);
+        if (!result.alreadyDownloaded) {
+          toast.success('Update downloaded successfully!', {
+            description: 'Click "Install Updates" to install and restart.',
+          });
+        }
+      } else {
+        toast.error(`Download failed: ${result.error || 'Unknown error'}`);
+      }
+    };
+
+    if (window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.on('download-progress', handleDownloadProgress);
+      window.electron.ipcRenderer.on('download-complete', handleDownloadComplete);
+    }
+
+    // Cleanup interval and listeners on unmount
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (window.electron?.ipcRenderer) {
+        window.electron.ipcRenderer.off('download-progress', handleDownloadProgress);
+        window.electron.ipcRenderer.off('download-complete', handleDownloadComplete);
       }
     };
   }, []);

@@ -29,17 +29,9 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [updateInfo, setUpdateInfo] = useState<VersionInfo | null>(null);
   const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
-  const [isDownloading, setIsDownloading] = useState(false);
   const [lastCheckResult, setLastCheckResult] = useState<
     'success' | 'error' | 'no-update' | null
   >(null);
-  // Auto-update state
-  const [
-    downloadProgress,
-    setDownloadProgress,
-  ] = useState<DownloadProgress | null>(null);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [isDownloadComplete, setIsDownloadComplete] = useState(false);
   // Use update store for coordination
   const {
     isCheckingForUpdates: storeIsChecking,
@@ -47,6 +39,14 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
     setUpdateInfo: setStoreUpdateInfo,
     setHasUpdate: setStoreHasUpdate,
     setLastChecked: setStoreLastChecked,
+    isDownloading,
+    downloadProgress,
+    isInstalling,
+    isDownloadComplete,
+    setIsDownloading,
+    setDownloadProgress,
+    setIsInstalling,
+    setIsDownloadComplete,
   } = useUpdateStore();
 
   const [, setPlatformInfo] = useState<PlatformInfo | null>(null);

@@ -11,6 +11,7 @@ export interface VersionInfo {
   created_at: string;
   updated_at?: string;
   published_at?: string;
+  alreadyDownloaded?: boolean;
 }
 
 export interface UpdateCheckResult {

@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useUpdateStore } from '@/stores/updateStore';
 import { AutoUpdateResult, DownloadProgress } from '@/types/electron';
 import { Download } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
 interface RestartToUpdateButtonProps {
@@ -14,14 +14,18 @@ interface RestartToUpdateButtonProps {
 export const RestartToUpdateButton: React.FC<RestartToUpdateButtonProps> = ({
   className,
 }) => {
-  const { hasUpdate, updateInfo } = useUpdateStore();
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [
+  const {
+    hasUpdate,
+    updateInfo,
+    isDownloading,
     downloadProgress,
+    isInstalling,
+    isDownloadComplete,
+    setIsDownloading,
     setDownloadProgress,
-  ] = useState<DownloadProgress | null>(null);
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [isDownloadComplete, setIsDownloadComplete] = useState(false);
+    setIsInstalling,
+    setIsDownloadComplete,
+  } = useUpdateStore();
 
   // Listen for automatic download events
   useEffect(() => {
@@ -224,19 +228,23 @@ export const RestartToUpdateButton: React.FC<RestartToUpdateButtonProps> = ({
   }
 
   // Show install updates button when update is available
-  return (
-    <Button
-      onClick={handleInstallUpdates}
-      size="sm"
-      disabled={isDownloading || isInstalling}
-      className={cn(
-        'border border-green-600 hover:border-green-700 text-green-600 bg-white hover:bg-green-50/60 text-[11px] rounded-full py-0 h-7',
-        className
-      )}
-      title="This will install available updates and restart the app"
-    >
-      <Download className="h-3 w-3 mr-2" />
-      {isDownloadComplete ? 'Install Updates' : 'Download & Install Updates'}
-    </Button>
-  );
+  if (isDownloadComplete) {
+    return (
+      <Button
+        onClick={handleInstallUpdates}
+        size="sm"
+        disabled={isDownloading || isInstalling}
+        className={cn(
+          'border border-green-600 hover:border-green-700 text-green-600 bg-white hover:bg-green-50/60 text-[11px] rounded-full py-0 h-7',
+          className
+        )}
+        title="This will install available updates and restart the app"
+      >
+        <Download className="h-3 w-3 mr-2" />
+        Install Updates
+      </Button>
+    );
+  }
+
+  return null;
 };
