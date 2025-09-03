@@ -17,6 +17,7 @@ import { AlertCircle, CheckCircle, Download, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { toast } from 'sonner';
+import { useUpdateStore } from '@/stores/updateStore';
 
 interface UpdateSettingsProps {
   className?: string;
@@ -37,15 +38,17 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
     downloadProgress,
     setDownloadProgress,
   ] = useState<DownloadProgress | null>(null);
-  const [downloadedFilePath, setDownloadedFilePath] = useState<string | null>(
-    null
-  );
-  const [isReadyToInstall, setIsReadyToInstall] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
-  // Install preferences
-  const [installOnClose, setInstallOnClose] = useState(false);
-  const [installOnNextLaunch, setInstallOnNextLaunch] = useState(false);
-  const [, setUserDecisionPending] = useState(false);
+  const [isDownloadComplete, setIsDownloadComplete] = useState(false);
+  // Use update store for coordination
+  const {
+    isCheckingForUpdates: storeIsChecking,
+    setIsCheckingForUpdates: setStoreIsChecking,
+    setUpdateInfo: setStoreUpdateInfo,
+    setHasUpdate: setStoreHasUpdate,
+    setLastChecked: setStoreLastChecked,
+  } = useUpdateStore();
+
   const [, setPlatformInfo] = useState<PlatformInfo | null>(null);
 
   useEffect(() => {
@@ -77,12 +80,15 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
   // Load update configuration from persistent storage
   const loadUpdateConfig = useCallback(async () => {
     try {
-      if (window.electron?.getUpdateConfig && window.electron?.getPlatformInfo) {
+      if (
+        window.electron?.getUpdateConfig &&
+        window.electron?.getPlatformInfo
+      ) {
         const [config, platform] = await Promise.all([
           window.electron.getUpdateConfig(),
-          window.electron.getPlatformInfo()
+          window.electron.getPlatformInfo(),
         ]);
-        
+
         setPlatformInfo(platform);
 
         // Set last checked time
@@ -104,41 +110,52 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
           });
         }
 
-        // Set download state
-        if (
-          config.downloadState.isDownloaded &&
-          config.downloadState.downloadPath
-        ) {
-          setDownloadedFilePath(config.downloadState.downloadPath);
-          setIsReadyToInstall(true);
-        }
-
-        // Set install preferences
-        setInstallOnClose(config.installPreferences.installOnClose);
-        setInstallOnNextLaunch(config.installPreferences.installOnNextLaunch);
-        setUserDecisionPending(config.installPreferences.userDecisionPending);
       }
     } catch (err) {
       console.error('Failed to load update config:', err);
     }
   }, []);
 
-  // Listen for download progress events
+  // Listen for automatic download events
   useEffect(() => {
     if (window.electron?.ipcRenderer) {
       const handleDownloadProgress = (progress: DownloadProgress) => {
+        setIsDownloading(true);
         setDownloadProgress(progress);
+      };
+
+      const handleDownloadComplete = (result: AutoUpdateResult) => {
+        setIsDownloading(false);
+        setDownloadProgress(null);
+        if (result.success) {
+          setIsDownloadComplete(true);
+          if (!result.alreadyDownloaded) {
+            toast.success('Update downloaded successfully!', {
+              description: 'Click "Install Updates" to install and restart.',
+            });
+          }
+        } else {
+          toast.error(`Download failed: ${result.error || 'Unknown error'}`);
+        }
       };
 
       window.electron.ipcRenderer.on(
         'download-progress',
         handleDownloadProgress
       );
+      window.electron.ipcRenderer.on(
+        'download-complete',
+        handleDownloadComplete
+      );
 
       return () => {
         window.electron?.ipcRenderer?.off(
           'download-progress',
           handleDownloadProgress
+        );
+        window.electron?.ipcRenderer?.off(
+          'download-complete',
+          handleDownloadComplete
         );
       };
     }
@@ -152,30 +169,42 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
       return;
     }
 
+    // Prevent redundant checks when download is in progress
+    if (isDownloading || downloadProgress !== null) {
+      if (!silent) {
+        toast.info('Update check skipped - download already in progress.');
+      }
+      return;
+    }
+
     setIsChecking(true);
+    setStoreIsChecking(true);
     try {
       const result: UpdateCheckResult = await window.electron.checkForUpdates();
       setLastChecked(new Date());
 
       if (result.success && result.hasUpdate && result.latestVersion) {
         setUpdateInfo(result.latestVersion);
+        setStoreUpdateInfo(result.latestVersion);
+        setStoreHasUpdate(true);
         setLastCheckResult('success');
 
         if (!silent) {
           toast.success(
             `Version ${result.latestVersion.version} is now available for download.`
           );
-        } else {
-          // Show notification for silent checks
-          showUpdateNotification(result.latestVersion);
         }
+        // Note: Automatic download is now handled by useAutoUpdateCheck hook
       } else if (result.error) {
         setLastCheckResult('error');
+        setStoreHasUpdate(false);
         if (!silent) {
           toast.error(`Failed to check for updates: ${result.error}`);
         }
       } else {
         setUpdateInfo(null);
+        setStoreUpdateInfo(null);
+        setStoreHasUpdate(false);
         setLastCheckResult('no-update');
         if (!silent) {
           toast.success(
@@ -189,39 +218,63 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
       }
     } finally {
       setIsChecking(false);
+      setStoreIsChecking(false);
+      setStoreLastChecked(new Date());
     }
   };
 
-  const showUpdateNotification = (versionInfo: VersionInfo) => {
-    // Create a persistent notification-like toast
-    toast.success(
-      `🎉 Update Available - Version ${versionInfo.version} is now available.`,
-      {
-        duration: 10000,
-        action: {
-          label: 'Download',
-          onClick: () => downloadUpdate(versionInfo),
-        },
-      }
-    );
-  };
 
-  const downloadUpdate = async (versionInfo: VersionInfo) => {
-    if (!window.electron?.downloadUpdateToTemp) {
+
+  const installUpdate = async (versionInfo: VersionInfo) => {
+    if (!window.electron?.installAndRestart) {
       toast.error(
-        'Auto-update functionality is not available in this environment.'
+        'Update functionality is not available in this environment.'
       );
       return;
     }
 
-    setIsDownloading(true);
-    setDownloadProgress(null);
-    setIsReadyToInstall(false);
+    setIsInstalling(true);
 
     try {
-      // Set up completion listener
-      const handleDownloadComplete = (result: AutoUpdateResult) => {
-        // Clean up listener
+      // If download is already complete, proceed directly with installation
+      if (isDownloadComplete) {
+        toast.info('Installing update and restarting app...');
+        
+        const installResult = await window.electron.installAndRestart();
+        if (installResult.success) {
+          toast.success('Installing update and restarting...');
+          // App will quit automatically
+        } else {
+          toast.error(
+            `Installation failed: ${installResult.error || 'Unknown error'}`
+          );
+          setIsInstalling(false);
+        }
+        return;
+      }
+
+      // If download is not complete, start download first
+      if (!window.electron?.downloadUpdateToTemp) {
+        toast.error('Download functionality is not available.');
+        setIsInstalling(false);
+        return;
+      }
+
+      setIsDownloading(true);
+      setDownloadProgress(null);
+
+      // Set up progress listener for manual download
+      const handleDownloadProgress = (progress: DownloadProgress) => {
+        setDownloadProgress(progress);
+      };
+
+      // Set up completion listener for manual download
+      const handleDownloadComplete = async (result: AutoUpdateResult) => {
+        // Clean up listeners
+        window.electron?.ipcRenderer?.off(
+          'download-progress',
+          handleDownloadProgress
+        );
         window.electron?.ipcRenderer?.off(
           'download-complete',
           handleDownloadComplete
@@ -231,23 +284,33 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
         setDownloadProgress(null);
 
         if (result.success && result.downloadPath) {
-          setDownloadedFilePath(result.downloadPath);
-          setIsReadyToInstall(true);
-          toast.success(
-            'Update downloaded successfully! Click "Restart to Update" to install.',
-            {
-              duration: 10000,
-              action: {
-                label: 'Restart Now',
-                onClick: () => installAndRestart(result.downloadPath!),
-              },
+          toast.success('Download complete! Installing update and restarting app...');
+          
+          // Immediately proceed with installation
+          try {
+            const installResult = await window.electron!.installAndRestart(result.downloadPath);
+            if (installResult.success) {
+              toast.success('Installing update and restarting...');
+              // App will quit automatically
+            } else {
+              toast.error(`Installation failed: ${installResult.error || 'Unknown error'}`);
+              setIsInstalling(false);
             }
-          );
+          } catch (installError) {
+            console.error('Install error:', installError);
+            toast.error('An error occurred while installing the update.');
+            setIsInstalling(false);
+          }
         } else {
           toast.error(`Download failed: ${result.error || 'Unknown error'}`);
+          setIsInstalling(false);
         }
       };
 
+      window.electron.ipcRenderer.on(
+        'download-progress',
+        handleDownloadProgress
+      );
       window.electron.ipcRenderer.on(
         'download-complete',
         handleDownloadComplete
@@ -259,7 +322,7 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
         url.pathname.split('/').pop() ||
         `SalesTrack-${versionInfo.version}-Setup.exe`;
 
-      toast.info('Starting download in the background...');
+      toast.info('Starting update download...');
 
       const result: AutoUpdateResult = await window.electron.downloadUpdateToTemp(
         versionInfo.download_url,
@@ -268,101 +331,34 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
 
       // Check if download started successfully
       if (!result.success) {
-        // Clean up listener if download failed to start
+        // Clean up listeners if download failed to start
+        window.electron.ipcRenderer.off(
+          'download-progress',
+          handleDownloadProgress
+        );
         window.electron.ipcRenderer.off(
           'download-complete',
           handleDownloadComplete
         );
         setIsDownloading(false);
         setDownloadProgress(null);
+        setIsInstalling(false);
         toast.error(
           `Failed to start download: ${result.error || 'Unknown error'}`
         );
-      } else {
-        // Download started successfully, now it will continue in background
-        toast.success(
-          'Download started successfully! You can continue using the app.'
-        );
       }
     } catch (error) {
-      console.error('Download error:', error);
+      console.error('Update error:', error);
       setIsDownloading(false);
       setDownloadProgress(null);
-      toast.error('An error occurred while starting the download.');
-    }
-  };
-
-  const installAndRestart = async (filePath: string) => {
-    if (!window.electron?.installAndRestart) {
-      toast.error('Install functionality is not available.');
-      return;
-    }
-
-    setIsInstalling(true);
-
-    try {
-      const result = await window.electron.installAndRestart(filePath);
-
-      if (result.success) {
-        toast.success('Installing update and restarting...');
-        // The app will quit automatically
-      } else {
-        toast.error(`Installation failed: ${result.error || 'Unknown error'}`);
-        setIsInstalling(false);
-      }
-    } catch (error) {
-      console.error('Install error:', error);
-      toast.error('An error occurred while installing the update.');
       setIsInstalling(false);
+      toast.error('An error occurred while starting the update.');
     }
   };
 
-  // Install preference handlers
-  const handleInstallOnClose = async (enabled: boolean) => {
-    try {
-      if (window.electron?.setInstallOnClose) {
-        await window.electron.setInstallOnClose(enabled);
-        setInstallOnClose(enabled);
-        if (enabled) {
-          setInstallOnNextLaunch(false);
-          toast.success('Update will be installed when you close the app.');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to set install on close:', error);
-      toast.error('Failed to update install preference.');
-    }
-  };
 
-  const handleInstallOnNextLaunch = async (enabled: boolean) => {
-    try {
-      if (window.electron?.setInstallOnNextLaunch) {
-        await window.electron.setInstallOnNextLaunch(enabled);
-        setInstallOnNextLaunch(enabled);
-        if (enabled) {
-          setInstallOnClose(false);
-          toast.success('Update will be installed when you restart the app.');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to set install on next launch:', error);
-      toast.error('Failed to update install preference.');
-    }
-  };
 
-  const handleInstallNow = async () => {
-    if (downloadedFilePath) {
-      try {
-        if (window.electron?.setInstallNow) {
-          await window.electron.setInstallNow(true);
-        }
-        await installAndRestart(downloadedFilePath);
-      } catch (error) {
-        console.error('Failed to install now:', error);
-        toast.error('Failed to start installation.');
-      }
-    }
-  };
+
 
   const cancelDownload = async () => {
     if (!window.electron?.cancelDownload) {
@@ -373,8 +369,7 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
       await window.electron.cancelDownload();
       setIsDownloading(false);
       setDownloadProgress(null);
-      setDownloadedFilePath(null);
-      setIsReadyToInstall(false);
+
       toast.info('Download cancelled.');
     } catch (error) {
       console.error('Cancel download error:', error);
@@ -473,122 +468,44 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
                   </div>
                 )}
 
-                {/* Installation Options */}
-                {isReadyToInstall && (
-                  <div className="space-y-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                    <div className="flex items-center space-x-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                        Update Ready to Install
-                      </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="text-xs text-green-700 dark:text-green-300">
-                        Choose when to install the update:
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <Label
-                              htmlFor="install-on-close"
-                              className="text-sm font-medium"
-                            >
-                              Install on Close
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              Install when you close the app
-                            </p>
-                          </div>
-                          <Switch
-                            id="install-on-close"
-                            checked={installOnClose}
-                            onCheckedChange={handleInstallOnClose}
-                            disabled={isInstalling}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-0.5">
-                            <Label
-                              htmlFor="install-on-restart"
-                              className="text-sm font-medium"
-                            >
-                              Install on Next Launch
-                            </Label>
-                            <p className="text-xs text-muted-foreground">
-                              Install when you restart the app
-                            </p>
-                          </div>
-                          <Switch
-                            id="install-on-restart"
-                            checked={installOnNextLaunch}
-                            onCheckedChange={handleInstallOnNextLaunch}
-                            disabled={isInstalling}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-2 pt-2">
-                        <Button
-                          onClick={handleInstallNow}
-                          disabled={isInstalling}
-                          size="sm"
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          {isInstalling ? (
-                            <>
-                              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                              Installing...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Install Now
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Download Section */}
-                {!isReadyToInstall && (
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      onClick={() => downloadUpdate(updateInfo)}
-                      disabled={isDownloading || downloadProgress !== null}
-                      size="sm"
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      {isDownloading || downloadProgress ? (
-                        <>
-                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                          {downloadProgress
-                            ? 'Downloading...'
-                            : 'Starting Download...'}
-                        </>
-                      ) : (
-                        <>
-                          <Download className="mr-2 h-4 w-4" />
-                          Download Update
-                        </>
-                      )}
-                    </Button>
-
-                    {(isDownloading || downloadProgress) && (
-                      <Button
-                        onClick={cancelDownload}
-                        variant="outline"
-                        size="sm"
-                      >
-                        Cancel
-                      </Button>
+                {/* Install Section */}
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={() => installUpdate(updateInfo)}
+                    disabled={isDownloading || downloadProgress !== null || isInstalling}
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isInstalling ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Installing...
+                      </>
+                    ) : isDownloading || downloadProgress ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        {downloadProgress
+                          ? 'Downloading...'
+                          : 'Starting Download...'}
+                      </>
+                    ) : (
+                       <>
+                         <Download className="mr-2 h-4 w-4" />
+                         {isDownloadComplete ? 'Install Updates' : 'Download & Install Updates'}
+                       </>
                     )}
-                  </div>
-                )}
+                  </Button>
+
+                  {(isDownloading || downloadProgress) && (
+                    <Button
+                      onClick={cancelDownload}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Cancel
+                    </Button>
+                  )}
+                </div>
               </div>
             </AlertDescription>
           </Alert>
@@ -686,7 +603,12 @@ export function UpdateSettings({ className }: UpdateSettingsProps) {
         <div className="flex items-center space-x-2">
           <Button
             onClick={() => checkForUpdates(false)}
-            disabled={isChecking}
+            disabled={
+              isChecking ||
+              storeIsChecking ||
+              isDownloading ||
+              downloadProgress !== null
+            }
             variant="outline"
             size="sm"
           >

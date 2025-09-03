@@ -37,6 +37,7 @@ export interface AutoUpdateResult {
   success: boolean;
   error?: string;
   downloadPath?: string;
+  alreadyDownloaded?: boolean;
 }
 
 export interface InstallResult {
@@ -88,9 +89,9 @@ declare global {
       checkForUpdates: () => Promise<UpdateCheckResult>;
       downloadUpdate: (downloadUrl: string) => Promise<DownloadResult>;
       // Auto-update methods
-      downloadUpdateToTemp: (downloadUrl: string, fileName: string) => Promise<AutoUpdateResult>;
+      downloadUpdateToTemp: (downloadUrl?: string, fileName?: string) => Promise<AutoUpdateResult>;
       getDownloadProgress: () => Promise<DownloadProgress | null>;
-      installAndRestart: (downloadPath: string) => Promise<InstallResult>;
+      installAndRestart: (downloadPath?: string) => Promise<InstallResult>;
       cancelDownload: () => Promise<{ success: boolean }>;
       // Install preference methods
       setInstallOnClose: (enable: boolean, installPath?: string) => Promise<{ success: boolean }>;

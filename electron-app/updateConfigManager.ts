@@ -176,26 +176,7 @@ class UpdateConfigManager {
     this.saveConfig();
   }
 
-  // Install preference methods
-  setInstallPreference(preference: 'now' | 'onClose' | 'onNextLaunch'): void {
-    this.config.installPreferences = {
-      installOnClose: preference === 'onClose',
-      installOnNextLaunch: preference === 'onNextLaunch',
-      installNow: preference === 'now',
-      userDecisionPending: false
-    };
-    this.saveConfig();
-  }
 
-  clearInstallPreferences(): void {
-    this.config.installPreferences = {
-      installOnClose: false,
-      installOnNextLaunch: false,
-      installNow: false,
-      userDecisionPending: false
-    };
-    this.saveConfig();
-  }
 
   // Cleanup methods
   addToCleanupList(filePath: string): void {
@@ -272,21 +253,7 @@ class UpdateConfigManager {
     return this.config.downloadState.isDownloaded;
   }
 
-  needsUserDecision(): boolean {
-    return this.config.installPreferences.userDecisionPending;
-  }
 
-  shouldInstallOnClose(): boolean {
-    return this.config.installPreferences.installOnClose;
-  }
-
-  shouldInstallOnNextLaunch(): boolean {
-    return this.config.installPreferences.installOnNextLaunch;
-  }
-
-  shouldInstallNow(): boolean {
-    return this.config.installPreferences.installNow;
-  }
 
   needsCleanup(): boolean {
     return this.config.cleanup.needsCleanup;

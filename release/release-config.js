@@ -66,8 +66,8 @@ module.exports = {
 
   // Supabase publishing configuration
   supabase: {
-    enabled: false,
-    publish: false,
+    enabled: true,
+    publish: true,
     edgeFunction: 'publish-release',
     url: process.env.VITE_SUPABASE_URL,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY

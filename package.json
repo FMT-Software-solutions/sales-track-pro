@@ -1,7 +1,7 @@
 {
   "name": "salestrack-pro",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Sales tracking application for businesses",
   "author": "FMT Software Solutions",
   "main": "electron-app/dist/main.js",

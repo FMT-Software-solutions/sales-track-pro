@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2025-09-02
+
+### Added
+- Background update downloads
+
+### Improved / Changed
+
+### Bug Fixes
+
+
 ## [1.1.0] - 2025-09-01
 
 ### Added

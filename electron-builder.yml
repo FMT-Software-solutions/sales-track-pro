@@ -24,10 +24,10 @@ win:
         - x64
   icon: release/assets/favicon.ico
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
-  allowElevation: true
   allowToChangeInstallationDirectory: false
+  allowElevation: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Sales Track Pro

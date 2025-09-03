@@ -29,7 +29,36 @@ export function getFileExtension(platform: string): string {
 export function getInstallerArgs(platform: string): string[] {
   switch (platform) {
     case 'win32':
-      return ['/S', '/CLOSEAPPLICATIONS', '/RESTARTAPPLICATIONS'];
+      return ['/S', '/CLOSEAPPLICATIONS'];
+    case 'darwin':
+    case 'linux':
+    default:
+      return [];
+  }
+}
+
+/**
+ * Get platform-specific installer arguments for restart scenarios
+ */
+export function getInstallerArgsWithRestart(platform: string, execPath: string): string[] {
+  switch (platform) {
+    case 'win32':
+      return ['/S', '/CLOSEAPPLICATIONS', `/RESTARTCOMMANDLINE="${execPath}"`];
+    case 'darwin':
+    case 'linux':
+    default:
+      return [];
+  }
+}
+
+/**
+ * Get platform-specific installer arguments for visible installation with restart
+ */
+export function getVisibleInstallerArgsWithRestart(platform: string, execPath: string): string[] {
+  switch (platform) {
+    case 'win32':
+      // Remove /S flag to make installation visible, keep restart functionality
+      return ['/CLOSEAPPLICATIONS', `/RESTARTCOMMANDLINE="${execPath}"`];
     case 'darwin':
     case 'linux':
     default:

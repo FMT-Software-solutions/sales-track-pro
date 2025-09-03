@@ -1,36 +1,34 @@
-import { ReactNode, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { useAuthStore } from '@/stores/auth';
-import { signOut } from '@/lib/auth';
 import { OrganizationSelector } from '@/components/OrganizationSelector';
 import { useRoleCheck } from '@/components/auth/RoleGuard';
 import { HelpDrawer } from '@/components/layout/HelpDrawer';
 import { UpdateDrawer } from '@/components/layout/UpdateDrawer';
 import { RestartToUpdateButton } from '@/components/ui/RestartToUpdateButton';
-import { useUpdateStore } from '@/stores/updateStore';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { signOut } from '@/lib/auth';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth';
 import {
-  LayoutDashboard,
   Building2,
-  Plus,
-  Minus,
-  FileText,
-  Settings,
-  LogOut,
-  RefreshCw,
-  Users,
-  Logs,
-  HelpCircle,
   Download,
+  FileText,
+  HelpCircle,
+  LayoutDashboard,
+  LogOut,
+  Logs,
+  Minus,
+  Plus,
+  RefreshCw,
+  Settings,
+  Users,
 } from 'lucide-react';
+import { ReactNode, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -60,7 +58,6 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isHelpDrawerOpen, setIsHelpDrawerOpen] = useState(false);
   const [isUpdateDrawerOpen, setIsUpdateDrawerOpen] = useState(false);
-  const { hasUpdate } = useUpdateStore();
 
   const handleSignOut = async () => {
     try {
@@ -169,12 +166,6 @@ export function AppLayout({ children }: AppLayoutProps) {
                   >
                     <HelpCircle className="h-4 w-4" />
                     <span className="hidden sm:inline">Help</span>
-                    {hasUpdate && (
-                      <Badge
-                        variant="destructive"
-                        className="absolute top-0 right-0 h-2 w-2 p-0 rounded-full"
-                      />
-                    )}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -191,20 +182,14 @@ export function AppLayout({ children }: AppLayoutProps) {
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Check for updates
-                    {hasUpdate && (
-                      <Badge
-                        variant="destructive"
-                        className="ml-2 h-2 w-2 p-0 rounded-full"
-                      />
-                    )}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            
+
             {/* Restart to Update Button */}
             <RestartToUpdateButton className="mx-2" />
-            
+
             <div className="flex items-center space-x-3">
               <Button
                 variant="ghost"
