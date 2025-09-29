@@ -4,7 +4,10 @@ import { cn } from '@/lib/utils';
 import { useUpdateStore } from '@/stores/updateStore';
 import { AutoUpdateResult, DownloadProgress } from '@/types/electron';
 import { Download } from 'lucide-react';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+type InstallType = 'appimage' | 'package';
+
+
 import { toast } from 'sonner';
 
 interface RestartToUpdateButtonProps {
@@ -26,6 +29,23 @@ export const RestartToUpdateButton: React.FC<RestartToUpdateButtonProps> = ({
     setIsInstalling,
     setIsDownloadComplete,
   } = useUpdateStore();
+
+    const [installType, setInstallType] = useState<InstallType>('appimage');
+
+  // Fetch install type on mount
+  useEffect(() => {
+    async function fetchInstallType() {
+      if (window.electron?.ipcRenderer) {
+        try {
+          const info = await window.electron.ipcRenderer.invoke('get-platform-info');
+          setInstallType(info.installType || 'package');
+        } catch (e) {
+          setInstallType('package');
+        }
+      }
+    }
+    fetchInstallType();
+  }, []);
 
   // Listen for automatic download events
   useEffect(() => {
@@ -227,8 +247,8 @@ export const RestartToUpdateButton: React.FC<RestartToUpdateButtonProps> = ({
     );
   }
 
-  // Show install updates button when update is available
-  if (isDownloadComplete) {
+  // Show install updates button for AppImage
+  if (installType === 'appimage' && isDownloadComplete) {
     return (
       <Button
         onClick={handleInstallUpdates}
@@ -242,6 +262,30 @@ export const RestartToUpdateButton: React.FC<RestartToUpdateButtonProps> = ({
       >
         <Download className="h-3 w-3 mr-2" />
         Install Updates
+      </Button>
+    );
+  }
+
+  // For .deb/.rpm (installType === 'package'), show Download from Website bustton
+  if (installType === 'package' && hasUpdate) {
+    return (
+      <Button
+        asChild
+        size="sm"
+        className={cn(
+          'border border-blue-600 hover:border-blue-700 text-blue-600 bg-white hover:bg-blue-50/60 text-[11px] rounded-full py-0 h-7',
+          className
+        )}
+        title="Go to the download page to get the latest version"
+      >
+        <a
+          href="https://your-domain.com/releases/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Download className="h-3 w-3 mr-2" />
+          Download from Website
+        </a>
       </Button>
     );
   }

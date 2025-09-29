@@ -5,6 +5,7 @@ export interface PlatformInfo {
   architecture: string;
   fileExtension: string;
   installerArgs: string[];
+  installType: 'appimage' | 'package';
 }
 
 /**
@@ -72,12 +73,16 @@ export function getVisibleInstallerArgsWithRestart(platform: string, execPath: s
 export function getPlatformInfo(): PlatformInfo {
   const platform = process.platform;
   const architecture = os.arch();
-  
+  let installType: 'appimage' | 'package' = 'package';
+  if (process.env.APPIMAGE) {
+    installType = 'appimage';
+  }
   return {
     platform,
     architecture,
     fileExtension: getFileExtension(platform),
-    installerArgs: getInstallerArgs(platform)
+    installerArgs: getInstallerArgs(platform),
+    installType,
   };
 }
 

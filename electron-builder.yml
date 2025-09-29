@@ -49,7 +49,14 @@ mac:
 linux:
   target:
     - AppImage
-  icon: assets
+    - deb
+    - rpm
+  category: Finance
+  icon: release/assets/icons
+  appImage:
+    artifactName: "${productName}-${version}.AppImage"
+    blockMap: true
+
 publish:
   provider: generic
   url: https://your-domain.com/releases/

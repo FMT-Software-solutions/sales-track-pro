@@ -7,6 +7,9 @@ import path from 'path';
 import { generateUpdateFileName, getPlatformInfo, getVisibleInstallerArgsWithRestart } from './platformUtils';
 import updateConfigManager from './updateConfigManager';
 
+// Disable sandbox for AppImage to avoid SUID errors
+app.commandLine.appendSwitch('no-sandbox');
+
 // Check if running in development
 const isDev = !app.isPackaged;
 
@@ -414,6 +417,31 @@ function registerIPCHandlers() {
           app.quit();
         }, 1500);
         
+        return { success: true };
+      } else if (process.platform === "linux") {
+        // actualDownloadPath is the downloaded AppImage
+        console.log('Launching new AppImage:', actualDownloadPath);
+
+        // Make sure it is executable
+        try {
+          fs.chmodSync(actualDownloadPath, 0o755);
+        } catch (e) {
+          console.error('Failed to set executable permission:', e);
+        }
+
+        // Launch the new AppImage
+        await shell.openPath(actualDownloadPath);
+
+        // Clear update state
+        updateConfigManager.clearAvailableUpdate();
+        updateConfigManager.clearDownloadState();
+
+        //mark the old image for deletion
+        updateConfigManager.addToCleanupList(process.execPath);
+
+        // Quit current app
+        app.quit();
+
         return { success: true };
       } else {
         // For non-Windows platforms, open the installer
